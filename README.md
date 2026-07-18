@@ -1,1 +1,1 @@
-# partysafari
+# partysafari[text](partysafari/src/lib/supabase/client.ts)

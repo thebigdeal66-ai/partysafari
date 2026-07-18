@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
@@ -28,6 +28,9 @@ function EditProfileForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarNotice, setAvatarNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createSupabaseBrowser();
@@ -53,7 +56,7 @@ function EditProfileForm() {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("full_name, username, bio, location, profile_type")
+        .select("full_name, username, bio, location, profile_type, avatar_url")
         .eq("id", userId)
         .maybeSingle();
 
@@ -89,6 +92,7 @@ function EditProfileForm() {
         setBio("");
         setLocation("");
         setProfileType("user");
+        setAvatarUrl(null);
 
         setLoading(false);
         return;
@@ -100,6 +104,7 @@ function EditProfileForm() {
         setBio(data.bio || "");
         setLocation(data.location || "");
         setProfileType(data.profile_type === "business" || data.profile_type === "entertainer" ? data.profile_type : "user");
+        setAvatarUrl(data.avatar_url || null);
       }
 
       setLoading(false);
@@ -107,6 +112,83 @@ function EditProfileForm() {
 
     loadProfile();
   }, []);
+
+  const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    const validExtensions = ["jpg", "jpeg", "png", "webp", "gif"];
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+
+    if (!validTypes.includes(file.type) && !validExtensions.includes(extension)) {
+      setAvatarNotice("Please choose a JPG, PNG, WebP, or GIF image.");
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setAvatarNotice("Please choose an image smaller than 8 MB.");
+      return;
+    }
+
+    setAvatarNotice(null);
+    setUploadingAvatar(true);
+
+    const supabase = createSupabaseBrowser();
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.user?.id) {
+      setAvatarNotice("You must be signed in to upload a profile photo.");
+      setUploadingAvatar(false);
+      return;
+    }
+
+    const userId = session.user.id;
+    const normalizedExtension = extension || (file.type === "image/jpeg" ? "jpg" : file.type.split("/")[1] || "jpg");
+    const filePath = `${userId}/avatars/avatar-${Date.now()}.${normalizedExtension}`;
+
+    const { error: uploadError } = await supabase.storage.from("party-media").upload(filePath, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: true,
+    });
+
+    if (uploadError) {
+      setAvatarNotice(uploadError.message || "Image upload failed.");
+      setUploadingAvatar(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from("party-media").getPublicUrl(filePath);
+    const publicUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: userId,
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+    if (updateError) {
+      setAvatarNotice(updateError.message || "Could not save your profile photo.");
+      setUploadingAvatar(false);
+      return;
+    }
+
+    setAvatarUrl(publicUrl);
+    setAvatarNotice("Profile photo uploaded successfully.");
+    setUploadingAvatar(false);
+  };
 
   const handleSave = async () => {
     setNotice(null);
@@ -183,6 +265,49 @@ function EditProfileForm() {
                   {notice}
                 </div>
               ) : null}
+
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[#07070B]">
+                      <img
+                        src={avatarUrl || "/api/placeholder/120/120"}
+                        alt="Current profile avatar"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Profile Photo</p>
+                      <p className="mt-1 text-sm text-white/70">
+                        Upload a JPG, PNG, WebP, or GIF up to 8 MB.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label
+                    className={`inline-flex cursor-pointer items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold transition ${
+                      uploadingAvatar
+                        ? "cursor-not-allowed border-white/10 bg-white/5 text-white/50"
+                        : "border-violet-500/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20"
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={handleAvatarUpload}
+                      className="sr-only"
+                      disabled={uploadingAvatar}
+                    />
+                    {uploadingAvatar ? "Uploading..." : "Upload Photo"}
+                  </label>
+                </div>
+
+                {avatarNotice ? (
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-violet-500/10 p-3 text-sm text-violet-100">
+                    {avatarNotice}
+                  </div>
+                ) : null}
+              </div>
 
               <div className="grid gap-6 lg:grid-cols-2">
                 <label className="space-y-2 text-sm text-white/70">
