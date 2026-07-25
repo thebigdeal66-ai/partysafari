@@ -1,8 +1,14 @@
 "use client";
 
+import type {
+  RealtimePostgresDeletePayload,
+  RealtimePostgresInsertPayload,
+  RealtimePostgresUpdatePayload,
+} from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
+import { FRIEND_STATE_SYNC_EVENT, type FriendStateSyncDetail } from "@/lib/friendSync";
 
 type NotificationType =
   | "like_activity"
@@ -11,12 +17,15 @@ type NotificationType =
   | "follow"
   | "rsvp"
   | "booking_request"
-  | "booking_accepted";
+  | "booking_accepted"
+  | "direct_message"
+  | "friend_request"
+  | "friend_request_accepted";
 
 interface NotificationRow {
   id: string;
   actor_id: string | null;
-  notification_type: NotificationType;
+  notification_type: string;
   event_id: string | null;
   activity_id: string | null;
   comment_id: string | null;
@@ -36,6 +45,10 @@ interface NotificationItem extends NotificationRow {
   actor: ProfileRow | null;
 }
 
+type NotificationInsertPayload = RealtimePostgresInsertPayload<NotificationRow>;
+type NotificationUpdatePayload = RealtimePostgresUpdatePayload<NotificationRow>;
+type NotificationDeletePayload = RealtimePostgresDeletePayload<NotificationRow>;
+
 const notificationTextMap: Record<NotificationType, string> = {
   like_activity: "liked your activity",
   like_comment: "liked your comment",
@@ -44,7 +57,24 @@ const notificationTextMap: Record<NotificationType, string> = {
   rsvp: "RSVP'd to your event",
   booking_request: "sent a booking request",
   booking_accepted: "accepted your booking request",
+  direct_message: "sent you a message",
+  friend_request: "sent you a friend request",
+  friend_request_accepted: "accepted your friend request",
 };
+
+function getConversationIdFromMetadata(metadata: Record<string, unknown>) {
+  const conversationId = metadata.conversation_id;
+  if (typeof conversationId === "string" && conversationId.length > 0) {
+    return conversationId;
+  }
+
+  const altConversationId = metadata.conversationId;
+  if (typeof altConversationId === "string" && altConversationId.length > 0) {
+    return altConversationId;
+  }
+
+  return null;
+}
 
 function formatRelativeTime(dateString: string) {
   const date = new Date(dateString);
@@ -70,13 +100,20 @@ function getNotificationText(notification: NotificationItem) {
   const actorName = notification.actor?.username
     ? `@${notification.actor.username}`
     : notification.actor?.full_name || "Someone";
-  return `${actorName} ${notificationTextMap[notification.notification_type]}`;
+  const actionText =
+    notificationTextMap[notification.notification_type as NotificationType] ||
+    "sent you a notification";
+
+  return `${actorName} ${actionText}`;
 }
 
 function getNotificationHref(notification: NotificationItem) {
   switch (notification.notification_type) {
     case "follow":
       return notification.actor_id ? `/profiles/${notification.actor_id}` : "/profiles";
+    case "friend_request":
+    case "friend_request_accepted":
+      return "/friends";
     case "rsvp":
       return notification.event_id ? `/events/${notification.event_id}` : "/events";
     case "comment":
@@ -91,9 +128,45 @@ function getNotificationHref(notification: NotificationItem) {
         : notification.event_id
         ? `/events/${notification.event_id}`
         : "/feed";
+    case "direct_message": {
+      const conversationId = getConversationIdFromMetadata(notification.metadata);
+      return conversationId ? `/messages?conversation=${conversationId}` : "/messages";
+    }
     default:
       return "/";
   }
+}
+
+function NotificationAvatar({ actor }: { actor: ProfileRow | null }) {
+  const [imgError, setImgError] = useState(false);
+  const name = actor?.full_name || actor?.username || "?";
+  const altText = actor?.username || actor?.full_name || "Actor";
+  const safeAvatarUrl = typeof actor?.avatar_url === "string" && actor.avatar_url.trim().length > 0
+    ? actor.avatar_url
+    : null;
+  const initials = name
+    .split(" ")
+    .slice(0, 2)
+    .map((w: string) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  if (safeAvatarUrl && !imgError) {
+    return (
+      <img
+        src={safeAvatarUrl}
+        alt={altText}
+        onError={() => setImgError(true)}
+        className="h-11 w-11 rounded-full border border-violet-500/20 object-cover flex-shrink-0"
+      />
+    );
+  }
+  return (
+    <div className="h-11 w-11 rounded-full border border-violet-500/20 bg-gradient-to-br from-violet-500 to-orange-500 flex items-center justify-center flex-shrink-0">
+      <span className="text-xs font-bold text-white">{initials}</span>
+    </div>
+  );
 }
 
 export default function NotificationCenter() {
@@ -106,6 +179,14 @@ export default function NotificationCenter() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const replaceNotifications = (updater: (current: NotificationItem[]) => NotificationItem[]) => {
+    setNotifications((current) => {
+      const next = updater(current);
+      setUnreadCount(next.filter((item) => !item.is_read).length);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -141,33 +222,60 @@ export default function NotificationCenter() {
         return;
       }
 
+      const fullSelect =
+        "id, actor_id, notification_type, event_id, activity_id, comment_id, metadata, is_read, created_at";
+
       const { data: notificationRows, error: notificationError } = await supabase
         .from("notifications")
-        .select(
-          "id, actor_id, notification_type, event_id, activity_id, comment_id, metadata, is_read, created_at"
-        )
+        .select(fullSelect)
         .eq("user_id", currentUserId)
         .order("created_at", { ascending: false });
 
       if (!isMounted) return;
 
+      let rows = (notificationRows ?? []) as NotificationRow[];
+
       if (notificationError) {
-        setErrorMessage("Unable to load notifications.");
-        setNotifications([]);
-        setUnreadCount(0);
-        setIsLoading(false);
-        return;
+        const { data: fallbackRows, error: fallbackError } = await supabase
+          .from("notifications")
+          .select("id, actor_id, notification_type, event_id, is_read, created_at")
+          .eq("user_id", currentUserId)
+          .order("created_at", { ascending: false });
+
+        if (fallbackError) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("Failed to load notifications", {
+              notificationError,
+              fallbackError,
+            });
+          }
+          setErrorMessage("Unable to load notifications.");
+          setNotifications([]);
+          setUnreadCount(0);
+          setIsLoading(false);
+          return;
+        }
+
+        rows = ((fallbackRows ?? []) as Array<Partial<NotificationRow>>).map((row) => ({
+          ...row,
+          activity_id: null,
+          comment_id: null,
+          metadata: {},
+        })) as NotificationRow[];
       }
 
-      const rows = (notificationRows ?? []) as NotificationRow[];
       const actorIds = [...new Set(rows.map((item) => item.actor_id).filter(Boolean) as string[])];
       let actorProfiles: ProfileRow[] = [];
 
       if (actorIds.length > 0) {
-        const { data: profilesData } = await supabase
+        const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
           .select("id, full_name, username, avatar_url")
           .in("id", actorIds);
+
+        if (profilesError) {
+          console.warn("Could not fetch actor profiles for notifications", profilesError);
+        }
 
         actorProfiles = (profilesData ?? []) as ProfileRow[];
       }
@@ -200,16 +308,47 @@ export default function NotificationCenter() {
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
-          const newNotification = payload.new as NotificationRow;
-          setNotifications((current) => [
-            {
-              ...newNotification,
-              actor: null,
-            },
-            ...current,
-          ]);
-          setUnreadCount((count) => count + 1);
+        (payload: NotificationInsertPayload) => {
+          const newNotification = payload.new;
+
+          replaceNotifications((current) => {
+            if (current.some((item) => item.id === newNotification.id)) {
+              return current;
+            }
+
+            return [
+              {
+                ...newNotification,
+                metadata: newNotification.metadata ?? {},
+                activity_id: newNotification.activity_id ?? null,
+                comment_id: newNotification.comment_id ?? null,
+                actor: null,
+              },
+              ...current,
+            ];
+          });
+
+          if (newNotification.actor_id) {
+            void (async () => {
+              const { data: actorProfile } = await supabase
+                .from("profiles")
+                .select("id, full_name, username, avatar_url")
+                .eq("id", newNotification.actor_id)
+                .maybeSingle();
+
+              if (!actorProfile) {
+                return;
+              }
+
+              replaceNotifications((current) =>
+                current.map((item) =>
+                  item.id === newNotification.id
+                    ? { ...item, actor: actorProfile as ProfileRow }
+                    : item
+                )
+              );
+            })();
+          }
         }
       )
       .on(
@@ -220,20 +359,39 @@ export default function NotificationCenter() {
           table: "notifications",
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
-          const updatedNotification = payload.new as NotificationRow;
-          setNotifications((current) =>
+        (payload: NotificationUpdatePayload) => {
+          const updatedNotification = payload.new;
+          replaceNotifications((current) =>
             current.map((item) =>
               item.id === updatedNotification.id
                 ? {
                     ...item,
                     ...updatedNotification,
+                    metadata: updatedNotification.metadata ?? item.metadata ?? {},
+                    activity_id: updatedNotification.activity_id ?? item.activity_id ?? null,
+                    comment_id: updatedNotification.comment_id ?? item.comment_id ?? null,
                   }
                 : item
             )
           );
-          setUnreadCount((count) =>
-            updatedNotification.is_read ? Math.max(0, count - 1) : count
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload: NotificationDeletePayload) => {
+          const deletedNotification = payload.old;
+          if (!deletedNotification?.id) {
+            return;
+          }
+
+          replaceNotifications((current) =>
+            current.filter((item) => item.id !== deletedNotification.id)
           );
         }
       );
@@ -245,6 +403,32 @@ export default function NotificationCenter() {
     };
   }, [supabase, userId]);
 
+  useEffect(() => {
+    const handleFriendSync = (event: Event) => {
+      const custom = event as CustomEvent<FriendStateSyncDetail>;
+      const detail = custom.detail;
+      if (!detail || detail.reason !== "request_accepted" || !detail.actorId) {
+        return;
+      }
+
+      replaceNotifications((current) =>
+        current.map((item) => {
+          const isMatchingIncomingRequest =
+            item.notification_type === "friend_request" &&
+            item.actor_id === detail.actorId &&
+            !item.is_read;
+
+          return isMatchingIncomingRequest ? { ...item, is_read: true } : item;
+        })
+      );
+    };
+
+    window.addEventListener(FRIEND_STATE_SYNC_EVENT, handleFriendSync);
+    return () => {
+      window.removeEventListener(FRIEND_STATE_SYNC_EVENT, handleFriendSync);
+    };
+  }, []);
+
   const markNotificationAsRead = async (notificationId: string) => {
     const { error } = await supabase
       .from("notifications")
@@ -252,12 +436,11 @@ export default function NotificationCenter() {
       .eq("id", notificationId);
 
     if (!error) {
-      setNotifications((current) =>
+      replaceNotifications((current) =>
         current.map((item) =>
           item.id === notificationId ? { ...item, is_read: true } : item
         )
       );
-      setUnreadCount((count) => Math.max(0, count - 1));
     }
   };
 
@@ -271,10 +454,9 @@ export default function NotificationCenter() {
       .in("id", unreadIds);
 
     if (!error) {
-      setNotifications((current) =>
+      replaceNotifications((current) =>
         current.map((item) => ({ ...item, is_read: true }))
       );
-      setUnreadCount(0);
     }
   };
 
@@ -343,11 +525,7 @@ export default function NotificationCenter() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <img
-                      src={notification.actor?.avatar_url || "/api/placeholder/40/40"}
-                      alt={notification.actor?.username || notification.actor?.full_name || "Actor"}
-                      className="h-11 w-11 rounded-full border border-violet-500/20 object-cover"
-                    />
+                    <NotificationAvatar actor={notification.actor} />
                     <div className="flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm text-white">{getNotificationText(notification)}</p>

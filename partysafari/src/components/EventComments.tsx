@@ -69,7 +69,9 @@ export default function EventComments({ eventId }: EventCommentsProps) {
     ]);
 
     if (commentError) {
-      console.error('Failed to load comments:', commentError);
+      if (process.env.NODE_ENV === "development") {
+        console.error('Failed to load comments:', commentError);
+      }
       setErrorMessage('Unable to load comments right now.');
       setIsLoading(false);
       return;
@@ -77,7 +79,7 @@ export default function EventComments({ eventId }: EventCommentsProps) {
 
     setCurrentUserId(userData?.user?.id ?? null);
 
-    const rows = commentRows ?? [];
+    const rows: EventCommentRow[] = (commentRows ?? []) as EventCommentRow[];
     if (rows.length === 0) {
       setComments([]);
       setIsLoading(false);
@@ -94,7 +96,8 @@ export default function EventComments({ eventId }: EventCommentsProps) {
       console.warn('Unable to load profile names for comments:', profileError);
     }
 
-    const profileMap = new Map(profileRows?.map((profile) => [profile.id, profile]) ?? []);
+    const typedProfileRows: ProfileRow[] = (profileRows ?? []) as ProfileRow[];
+    const profileMap = new Map(typedProfileRows.map((profile) => [profile.id, profile]));
     const commentIds = rows.map((row) => row.id);
     let likeRows: Array<{ comment_id: string; user_id: string }> = [];
 
@@ -178,7 +181,9 @@ export default function EventComments({ eventId }: EventCommentsProps) {
     });
 
     if (error) {
-      console.error('Failed to save comment:', error);
+      if (process.env.NODE_ENV === "development") {
+        console.error('Failed to save comment:', error);
+      }
       setErrorMessage('There was a problem posting your comment.');
       setIsSaving(false);
       return;
@@ -199,7 +204,9 @@ export default function EventComments({ eventId }: EventCommentsProps) {
   const handleCommentLike = async (commentId: string, currentlyLiked: boolean) => {
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData?.user?.id) {
-      console.error('Unable to get authenticated user before liking comment:', userError);
+      if (process.env.NODE_ENV === "development") {
+        console.error('Unable to get authenticated user before liking comment:', userError);
+      }
       router.push('/login');
       return;
     }
@@ -216,7 +223,9 @@ export default function EventComments({ eventId }: EventCommentsProps) {
 
       if (error) {
         if (error.code !== 'PGRST116') {
-          console.error('Failed to unlike comment:', error);
+          if (process.env.NODE_ENV === "development") {
+            console.error('Failed to unlike comment:', error);
+          }
           setLikingCommentId(null);
           return;
         }
@@ -229,7 +238,9 @@ export default function EventComments({ eventId }: EventCommentsProps) {
 
       if (error) {
         if (error.code !== '23505') {
-          console.error('Failed to like comment:', error);
+          if (process.env.NODE_ENV === "development") {
+            console.error('Failed to like comment:', error);
+          }
           setLikingCommentId(null);
           return;
         }

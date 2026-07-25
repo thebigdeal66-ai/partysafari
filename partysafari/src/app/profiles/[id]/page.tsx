@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import FollowButton from "@/components/FollowButton";
+import FriendButton from "@/components/social/FriendButton";
+import StoryComposer from "@/components/stories/StoryComposer";
+import StoryGrid from "@/components/stories/StoryGrid";
+import StoryViewer from "@/components/stories/StoryViewer";
+import { useStories } from "@/components/stories/useStories";
 
 interface ProfileRow {
   id: string;
@@ -21,7 +26,7 @@ interface ProfilePageState {
   type: string;
   name: string;
   username: string;
-  avatar: string;
+  avatar: string | null;
   coverImage: string;
   bio: string;
   location: string;
@@ -47,6 +52,45 @@ interface ProfilePageState {
   achievements: string[];
 }
 
+function ProfileAvatar({
+  name,
+  username,
+  avatarUrl,
+}: {
+  name: string;
+  username: string;
+  avatarUrl: string | null;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const safeAvatarUrl = typeof avatarUrl === "string" && avatarUrl.trim().length > 0
+    ? avatarUrl
+    : null;
+  const initials = (name || username || "?")
+    .split(" ")
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  if (safeAvatarUrl && !imgError) {
+    return (
+      <img
+        src={safeAvatarUrl}
+        alt={name}
+        onError={() => setImgError(true)}
+        className="h-24 w-24 rounded-full border-4 border-violet-500/20 object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="h-24 w-24 rounded-full border-4 border-violet-500/20 bg-gradient-to-br from-violet-500 to-orange-500 flex items-center justify-center">
+      <span className="text-xl font-bold text-white">{initials || "?"}</span>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const params = useParams();
   const supabase = useMemo(() => createSupabaseBrowser(), []);
@@ -55,9 +99,17 @@ export default function ProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [viewerAuthorId, setViewerAuthorId] = useState<string | null>(null);
 
   const rawId = (params?.id as string | undefined) ?? "";
   const lookup = rawId.startsWith("@") ? rawId.slice(1) : rawId;
+  const storyState = useStories({
+    enabled: Boolean(profile?.id),
+    authorId: profile?.id || undefined,
+    includeOwnViewCounts: true,
+    subscribeOwnStoryViewCounts: true,
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -85,7 +137,7 @@ export default function ProfilePage() {
         type: (profileRow.profile_type as string) ?? "user",
         name: profileRow.full_name || profileRow.username || "",
         username: profileRow.username ? (profileRow.username.startsWith("@") ? profileRow.username : `@${profileRow.username}`) : "",
-        avatar: profileRow.avatar_url || "/api/placeholder/120/120",
+        avatar: profileRow.avatar_url?.trim() ? profileRow.avatar_url : null,
         coverImage: "/api/placeholder/800/300",
         bio: profileRow.bio || "",
         location: profileRow.location || "",
@@ -175,17 +227,54 @@ export default function ProfilePage() {
   }
 
   const fmt = (n?: number) => (n ?? 0).toLocaleString();
+  const isOwnProfile = storyState.currentUserId === profile.id;
+  const hasActiveStories = storyState.authorGroups.length > 0;
+  const profileStories = [...storyState.stories].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+
+  const renderProfileAvatar = () => {
+    const avatar = <ProfileAvatar name={profile.name} username={profile.username} avatarUrl={profile.avatar} />;
+    if (!hasActiveStories) {
+      return avatar;
+    }
+
+    return (
+      <button type="button" onClick={() => setViewerAuthorId(profile.id)} className="rounded-full bg-gradient-to-br from-violet-500 to-orange-500 p-1">
+        {avatar}
+      </button>
+    );
+  };
+
+  const storySection = hasActiveStories || isOwnProfile ? (
+    <section className="rounded-3xl border border-white/10 bg-[#10061f] p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold text-white">Story</h2>
+          <p className="mt-1 text-sm text-white/65">Active stories disappear automatically after they expire.</p>
+        </div>
+        {isOwnProfile ? (
+          <button
+            type="button"
+            onClick={() => setComposerOpen(true)}
+            className="rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-400"
+          >
+            Add Story
+          </button>
+        ) : null}
+      </div>
+      <StoryGrid
+        stories={profileStories}
+        emptyMessage="No active stories right now."
+        onOpenStory={(story) => setViewerAuthorId(story.author_id)}
+      />
+    </section>
+  ) : null;
 
   const renderUserProfile = () => (
     <div className="space-y-8">
       {/* Header Section */}
       <section className="rounded-3xl border border-white/10 bg-[#10061f] p-6">
         <div className="flex items-start gap-6">
-          <img
-            src={profile.avatar}
-            alt={profile.name}
-            className="h-24 w-24 rounded-full border-4 border-violet-500/20"
-          />
+          {renderProfileAvatar()}
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-white">{profile.name}</h1>
             <p className="text-violet-300">{profile.username}</p>
@@ -195,7 +284,7 @@ export default function ProfilePage() {
               <span>📅 Joined {profile.joinedDate}</span>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <FollowButton
               targetUserId={profile.id}
               initialFollowing={isFollowing}
@@ -204,12 +293,15 @@ export default function ProfilePage() {
                 setFollowersCount((value) => Math.max(0, value + (next ? 1 : -1)));
               }}
             />
+            <FriendButton targetUserId={profile.id} />
             <button className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">
               Message
             </button>
           </div>
         </div>
       </section>
+
+      {storySection}
 
       {/* Stats */}
       <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -269,11 +361,7 @@ export default function ProfilePage() {
       {/* Header Section */}
       <section className="rounded-3xl border border-white/10 bg-[#10061f] p-6">
         <div className="flex items-start gap-6">
-          <img
-            src={profile.avatar}
-            alt={profile.name}
-            className="h-24 w-24 rounded-full border-4 border-violet-500/20"
-          />
+          {renderProfileAvatar()}
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-white">{profile.name}</h1>
             <p className="text-violet-300">{profile.username}</p>
@@ -302,6 +390,8 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
+
+      {storySection}
 
       {/* Stats */}
       <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -375,11 +465,7 @@ export default function ProfilePage() {
       {/* Header Section */}
       <section className="rounded-3xl border border-white/10 bg-[#10061f] p-6">
         <div className="flex items-start gap-6">
-          <img
-            src={profile.avatar}
-            alt={profile.name}
-            className="h-24 w-24 rounded-full border-4 border-violet-500/20"
-          />
+          {renderProfileAvatar()}
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-white">{profile.name}</h1>
             <p className="text-violet-300">{profile.username}</p>
@@ -408,6 +494,8 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
+
+      {storySection}
 
       {/* Stats */}
       <section className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -483,6 +571,24 @@ export default function ProfilePage() {
         {profile.type === 'business' && renderBusinessProfile()}
         {profile.type === 'entertainer' && renderEntertainerProfile()}
       </div>
+
+      <StoryComposer
+        open={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        createStoryRecord={storyState.createStoryRecord}
+      />
+
+      {viewerAuthorId ? (
+        <StoryViewer
+          groups={storyState.authorGroups}
+          currentUserId={storyState.currentUserId}
+          initialAuthorId={viewerAuthorId}
+          onClose={() => setViewerAuthorId(null)}
+          onRecordView={storyState.recordView}
+          onAddReaction={storyState.addReaction}
+          onDeleteStory={storyState.softDeleteStory}
+        />
+      ) : null}
     </main>
   );
 }

@@ -109,7 +109,9 @@ export default function SavedEventsSection() {
       if (!isMounted) return;
 
       if (error) {
-        console.error("Failed to load saved events:", error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Failed to load saved events:", error);
+        }
         setErrorMessage("Unable to load saved events right now.");
         setSavedEvents([]);
       } else {

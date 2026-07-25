@@ -1,6 +1,11 @@
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 
-export type ActivityActionType = "created_event" | "rsvp_event" | "commented_event" | "saved_event" | "followed_profile";
+export type ActivityActionType = "created_event" | "event_created" | "rsvp" | "rsvp_event" | "commented_event" | "saved_event" | "followed_profile";
+
+type ActivityFeedLookupRow = {
+  id: string;
+  metadata: Record<string, unknown> | null;
+};
 
 const DUPLICATE_WINDOW_MS = 60_000;
 
@@ -55,16 +60,19 @@ export async function recordActivity(params: {
   const { data: existingRows, error: lookupError } = await lookupQuery;
 
   if (lookupError) {
-    console.error("Failed to look up recent activity feed entries:", {
-      message: lookupError.message,
-      details: lookupError.details,
-      hint: lookupError.hint,
-      code: lookupError.code,
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.error("Failed to look up recent activity feed entries:", {
+        message: lookupError.message,
+        details: lookupError.details,
+        hint: lookupError.hint,
+        code: lookupError.code,
+      });
+    }
   }
 
+  const lookupRows: ActivityFeedLookupRow[] = (existingRows ?? []) as ActivityFeedLookupRow[];
   const normalizedMetadata = JSON.stringify(metadata);
-  const isDuplicate = (existingRows ?? []).some((row) => {
+  const isDuplicate = lookupRows.some((row) => {
     const existingMetadata = JSON.stringify(normalizeMetadata(row.metadata ?? {}));
     return existingMetadata === normalizedMetadata;
   });

@@ -43,7 +43,8 @@ export interface FeedPostData {
   eventLink?: EventLink;
   profileLink?: ProfileLink;
   actionLabel?: string;
-  metadata?: Record<string, unknown>;
+  actorUsername?: string;
+  rsvpStatus?: 'going' | 'interested' | null;
 }
 
 interface FeedPostProps {
@@ -56,6 +57,17 @@ export default function FeedPost({ post }: FeedPostProps) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.likes);
   const [isLikeBusy, setIsLikeBusy] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const getAvatarInitials = (name: string) => {
+    return name
+      .split(' ')
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
 
   const refreshLikeState = useCallback(async () => {
     if (!post.activityId) {
@@ -123,7 +135,9 @@ export default function FeedPost({ post }: FeedPostProps) {
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData?.user?.id) {
-      console.error('Unable to get authenticated user before liking activity:', userError);
+      if (process.env.NODE_ENV === "development") {
+        console.error('Unable to get authenticated user before liking activity:', userError);
+      }
       router.push('/login');
       return;
     }
@@ -140,7 +154,9 @@ export default function FeedPost({ post }: FeedPostProps) {
 
       if (error) {
         if (error.code !== 'PGRST116') {
-          console.error('Failed to unlike activity feed post:', error);
+          if (process.env.NODE_ENV === "development") {
+            console.error('Failed to unlike activity feed post:', error);
+          }
           setIsLikeBusy(false);
           return;
         }
@@ -153,7 +169,9 @@ export default function FeedPost({ post }: FeedPostProps) {
 
       if (error) {
         if (error.code !== '23505') {
-          console.error('Failed to like activity feed post:', error);
+          if (process.env.NODE_ENV === "development") {
+            console.error('Failed to like activity feed post:', error);
+          }
           setIsLikeBusy(false);
           return;
         }
@@ -194,6 +212,27 @@ export default function FeedPost({ post }: FeedPostProps) {
     }
   };
 
+  const renderAvatar = () => {
+    if (post.user.avatar && !imageError) {
+      return (
+        <img
+          src={post.user.avatar}
+          alt={post.user.name}
+          onError={() => setImageError(true)}
+          className="h-12 w-12 rounded-full border-2 border-violet-500/20 object-cover"
+        />
+      );
+    }
+
+    // Fallback: circular badge with initials and gradient
+    const initials = getAvatarInitials(post.user.name);
+    return (
+      <div className="h-12 w-12 rounded-full border-2 border-violet-500/20 bg-gradient-to-br from-violet-500 to-orange-500 flex items-center justify-center flex-shrink-0">
+        <span className="text-xs font-bold text-white">{initials}</span>
+      </div>
+    );
+  };
+
   const getPostTypeIcon = (type: string) => {
     switch (type) {
       case 'user_activity':
@@ -227,11 +266,7 @@ export default function FeedPost({ post }: FeedPostProps) {
     >
       {/* Post Header */}
       <div className="flex items-start gap-4 mb-4">
-        <img
-          src={post.user.avatar}
-          alt={post.user.name}
-          className="h-12 w-12 rounded-full border-2 border-violet-500/20"
-        />
+        {renderAvatar()}
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <h3 className="font-semibold text-white">{post.user.name}</h3>
@@ -241,7 +276,16 @@ export default function FeedPost({ post }: FeedPostProps) {
               </span>
             )}
             <span className="text-sm text-violet-300">{post.user.username}</span>
-            {post.actionLabel && (
+            {post.rsvpStatus && (
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                post.rsvpStatus === 'going'
+                  ? 'bg-green-500/20 text-green-200 border border-green-500/30'
+                  : 'bg-pink-500/20 text-pink-200 border border-pink-500/30'
+              }`}>
+                {post.rsvpStatus === 'going' ? '✓ Going' : '✨ Interested'}
+              </span>
+            )}
+            {post.actionLabel && !post.rsvpStatus && (
               <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-200">
                 {post.actionLabel}
               </span>
@@ -252,30 +296,34 @@ export default function FeedPost({ post }: FeedPostProps) {
               </span>
             )}
           </div>
-          <p className="text-sm text-white/60">{getPostTypeIcon(post.type)} {post.timestamp}</p>
+          <p className="text-sm text-white/60">📅 {post.timestamp}</p>
         </div>
       </div>
 
       {/* Post Content */}
       <div className="mb-4">
-        <p className="text-white/90 leading-relaxed">{post.content}</p>
+        {post.rsvpStatus && post.eventLink && post.actorUsername ? (
+          <p className="text-white/90 leading-relaxed">
+            <a
+              href={`/profiles/${post.actorUsername}`}
+              className="font-semibold text-white hover:text-violet-300 transition"
+            >
+              {post.user.name}
+            </a>
+            {' '}
+            {post.rsvpStatus === 'going' ? 'is going to' : 'is interested in'}
+            {' '}
+            <a
+              href={`/events/${post.eventLink.eventId}`}
+              className="font-semibold text-violet-300 hover:text-violet-100 transition"
+            >
+              {post.eventLink.eventName}
+            </a>
+          </p>
+        ) : (
+          <p className="text-white/90 leading-relaxed">{post.content}</p>
+        )}
       </div>
-
-      {post.metadata && Object.keys(post.metadata).length > 0 && (
-        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <p className="text-sm font-medium text-violet-200">Details</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {Object.entries(post.metadata).map(([key, value]) => {
-              const renderedValue = value === null || value === undefined ? '—' : String(value);
-              return (
-                <span key={key} className="rounded-full border border-white/10 bg-[#07070B] px-3 py-1 text-xs text-white/70">
-                  {key}: {renderedValue}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Venue Check-in */}
       {post.venueCheckIn && (

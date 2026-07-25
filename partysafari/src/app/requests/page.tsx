@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import Link from "next/link";
 
 type RequestRow = {
@@ -26,10 +26,7 @@ type ResponseRow = {
 };
 
 export default function RequestsPage() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createSupabaseBrowser();
 
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
@@ -73,7 +70,9 @@ export default function RequestsPage() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[requests] Load requests failed:", error);
+      }
       setNotice("Could not load requests.");
       return;
     }
@@ -94,7 +93,9 @@ export default function RequestsPage() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[requests] Load responses failed:", error);
+      }
       setResponses([]);
       return;
     }
@@ -145,7 +146,9 @@ export default function RequestsPage() {
     setLoading(false);
 
     if (error) {
-      console.error(error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[requests] Insert response failed:", error);
+      }
       setNotice("Error sending response.");
       return;
     }
@@ -171,7 +174,9 @@ export default function RequestsPage() {
       .eq("request_id", selectedRequest.id);
 
     if (clearError) {
-      console.error(clearError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[requests] Clear accepted offers failed:", clearError);
+      }
       setNotice("Could not clear accepted offers.");
       setAcceptingId(null);
       return;
@@ -183,7 +188,9 @@ export default function RequestsPage() {
       .eq("id", responseId);
 
     if (acceptError) {
-      console.error(acceptError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[requests] Accept offer failed:", acceptError);
+      }
       setNotice("Could not accept offer.");
       setAcceptingId(null);
       return;
@@ -195,7 +202,9 @@ export default function RequestsPage() {
       .eq("id", selectedRequest.id);
 
     if (requestError) {
-      console.error(requestError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[requests] Update request status failed:", requestError);
+      }
       setNotice("Offer accepted but request update failed.");
       setAcceptingId(null);
       return;

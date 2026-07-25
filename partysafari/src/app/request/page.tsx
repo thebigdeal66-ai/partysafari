@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createSupabaseBrowser } from "@/lib/supabaseClient";
 
 export default function RequestPage() {
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createSupabaseBrowser();
 
 
   const [eventType, setEventType] = useState("");
@@ -32,7 +29,9 @@ const supabase = createBrowserClient(
 
     if (error) {
       alert("Error submitting request");
-      console.error(error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[request] Insert request failed:", error);
+      }
       return;
     }
 

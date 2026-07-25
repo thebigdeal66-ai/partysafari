@@ -37,7 +37,9 @@ export default function SavedEventToggle({ eventId }: SavedEventToggleProps) {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      console.error('Failed to load saved event state:', error);
+      if (process.env.NODE_ENV === "development") {
+        console.error('Failed to load saved event state:', error);
+      }
       setErrorMessage('Unable to check saved state right now.');
     }
 
@@ -65,7 +67,9 @@ export default function SavedEventToggle({ eventId }: SavedEventToggleProps) {
     if (isSaved && savedRecordId) {
       const { error } = await supabase.from('saved_events').delete().eq('id', savedRecordId);
       if (error) {
-        console.error('Failed to unsave event:', error);
+        if (process.env.NODE_ENV === "development") {
+          console.error('Failed to unsave event:', error);
+        }
         setErrorMessage('Unable to unsave event right now.');
         setIsLoading(false);
         return;
@@ -83,7 +87,9 @@ export default function SavedEventToggle({ eventId }: SavedEventToggleProps) {
     }).select('id').single();
 
     if (error) {
-      console.error('Failed to save event:', error);
+      if (process.env.NODE_ENV === "development") {
+        console.error('Failed to save event:', error);
+      }
       setErrorMessage('Unable to save event right now.');
       setIsLoading(false);
       return;

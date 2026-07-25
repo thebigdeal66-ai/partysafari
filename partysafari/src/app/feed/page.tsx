@@ -1,20 +1,7 @@
-import FeedPost from '@/components/FeedPost';
 import type { FeedPostData } from '@/components/FeedPost';
+import FeedPageClient from '@/components/feed/FeedPageClient';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
-
-function formatMetadataValue(value: unknown) {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value && typeof value === 'object') {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return '';
-    }
-  }
-  return '';
-}
 
 async function loadActivityFeed() {
   const cookieStore = await cookies();
@@ -36,11 +23,32 @@ async function loadActivityFeed() {
     .from('activity_feed')
     .select('id, actor_id, action_type, event_id, profile_id, metadata, created_at')
     .order('created_at', { ascending: false })
-    .limit(30);
+    .limit(50);
 
   if (error || !data || data.length === 0) {
     return [];
   }
+
+  // Deduplicate RSVP activities: keep only the latest per actor_id + event_id
+  const rsvpMap = new Map<string, any>();
+  const nonRsvpItems: any[] = [];
+
+  for (const item of data) {
+    if (item.action_type === 'rsvp' || item.action_type === 'rsvp_event') {
+      const key = `${item.actor_id}|${item.event_id}`;
+      // Map stores the latest (first encountered due to ordering) RSVP activity
+      if (!rsvpMap.has(key)) {
+        rsvpMap.set(key, item);
+      }
+    } else {
+      nonRsvpItems.push(item);
+    }
+  }
+
+  // Combine and re-sort by created_at descending
+  const deduplicatedData = [...Array.from(rsvpMap.values()), ...nonRsvpItems];
+  deduplicatedData.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  data.splice(0, data.length, ...deduplicatedData.slice(0, 30));
 
   const profileIds = Array.from(new Set([
     ...data.map((item: any) => item.actor_id).filter(Boolean),
@@ -95,31 +103,57 @@ async function loadActivityFeed() {
         : undefined;
 
     const userName = actorProfile?.full_name || actorProfile?.username || metadata.actor_name || 'PartySafari member';
-    const username = actorProfile?.username
-      ? (actorProfile.username.startsWith('@') ? actorProfile.username : `@${actorProfile.username}`)
-      : metadata.actor_username
-        ? String(metadata.actor_username)
-        : '@member';
-    const avatar = actorProfile?.avatar_url || '/api/placeholder/40/40';
+    const usernamePlain = actorProfile?.username || (typeof metadata.actor_username === 'string' ? metadata.actor_username : 'member');
+    const username = usernamePlain.startsWith('@') ? usernamePlain : `@${usernamePlain}`;
+    const avatar = actorProfile?.avatar_url || '';
+
+    // Format event title: trim and capitalize first letter if all lowercase
+    const formatEventTitle = (title: string | undefined) => {
+      if (!title) return 'an event';
+      const trimmed = title.trim();
+      if (trimmed.length === 0) return 'an event';
+      // If entirely lowercase, capitalize first letter
+      if (trimmed === trimmed.toLowerCase()) {
+        return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+      }
+      return trimmed;
+    };
+
+    const eventTitle = formatEventTitle(relatedEvent?.title || fallbackTitle);
 
     const actionLabels: Record<string, string> = {
       created_event: 'Created Event',
+      event_created: 'Created Event',
       rsvp_event: 'RSVP',
+      rsvp: 'RSVP',
       commented_event: 'Commented',
       saved_event: 'Saved Event',
       followed_profile: 'Followed Profile',
     };
 
+    // Extract RSVP status for badge styling
+    let rsvpStatus: 'going' | 'interested' | null = null;
+    if (item.action_type === 'rsvp' || item.action_type === 'rsvp_event') {
+      const status = typeof metadata.status === 'string' ? metadata.status : null;
+      if (status === 'going' || status === 'interested') {
+        rsvpStatus = status;
+      }
+    }
+
     const content = (() => {
       switch (item.action_type) {
         case 'created_event':
-          return relatedEvent?.title || fallbackTitle || 'created a new event';
+        case 'event_created':
+          const venueName = typeof metadata.venue_name === 'string' ? metadata.venue_name : undefined;
+          return venueName ? `created "${eventTitle}" at ${venueName}` : `created "${eventTitle}"`;
         case 'rsvp_event':
-          return relatedEvent?.title || fallbackTitle || 'RSVP’d to an event';
+        case 'rsvp':
+          const rsvpStatusLabel = rsvpStatus === 'going' ? 'is going to' : rsvpStatus === 'interested' ? 'is interested in' : 'rsvp\'d to';
+          return `${rsvpStatusLabel} ${eventTitle}`;
         case 'commented_event':
-          return relatedEvent?.title || fallbackTitle || 'commented on an event';
+          return `commented on ${eventTitle}`;
         case 'saved_event':
-          return relatedEvent?.title || fallbackTitle || 'saved an event';
+          return `saved ${eventTitle}`;
         case 'followed_profile':
           return relatedProfile?.full_name || relatedProfile?.username || fallbackProfileName || 'followed a profile';
         default:
@@ -127,8 +161,19 @@ async function loadActivityFeed() {
       }
     })();
 
-    const eventTitle = relatedEvent?.title || fallbackTitle || 'Related event';
     const profileLabel = relatedProfile?.full_name || relatedProfile?.username || fallbackProfileName || 'This profile';
+
+    let feedContent = '';
+    
+    // For RSVP and event_created, include actor name directly; otherwise use action label prefix
+    if (item.action_type === 'rsvp' || item.action_type === 'rsvp_event' || 
+        item.action_type === 'event_created' || item.action_type === 'created_event') {
+      feedContent = `${userName} ${content}`;
+    } else if (item.action_type === 'followed_profile') {
+      feedContent = `${userName} followed ${profileLabel}`;
+    } else {
+      feedContent = `${actionLabels[item.action_type] || 'Activity'} • ${content}`;
+    }
 
     const post: FeedPostData = {
       id: String(item.id),
@@ -140,22 +185,19 @@ async function loadActivityFeed() {
         username,
       },
       timestamp: item.created_at ? new Date(item.created_at).toLocaleString() : 'Recently',
-      content: `${actionLabels[item.action_type] || 'Activity'} • ${content}`,
+      content: feedContent,
       likes: 0,
       comments: 0,
       shares: 0,
       tags: [],
       actionLabel: actionLabels[item.action_type] || 'Activity',
-      metadata,
       eventLink: item.event_id
         ? { eventId: String(item.event_id), eventName: eventTitle, eventDate: undefined }
         : undefined,
       profileLink: item.profile_id ? { profileId: String(item.profile_id) } : undefined,
+      actorUsername: usernamePlain,
+      rsvpStatus,
     };
-
-    if (item.action_type === 'followed_profile' && item.profile_id) {
-      post.content = `${actionLabels[item.action_type] || 'Activity'} • followed ${profileLabel}`;
-    }
 
     return post;
   });
@@ -164,29 +206,5 @@ async function loadActivityFeed() {
 export default async function FeedPage() {
   const posts = await loadActivityFeed();
 
-  return (
-    <main className="min-h-screen bg-[#07070B] text-white">
-      <div className="mx-auto max-w-4xl px-6 py-8">
-        {/* Header */}
-        <div className="mb-8 sticky top-0 bg-[#07070B] z-20 py-4 -mx-6 px-6">
-          <h1 className="text-4xl font-bold text-white">Nightlife Feed</h1>
-          <p className="mt-2 text-lg text-white/70">Stay connected with the PartySafari community</p>
-        </div>
-
-        {/* Feed Posts */}
-        <div className="space-y-6">
-          {posts.map((post) => (
-            <FeedPost key={post.id} post={post} />
-          ))}
-        </div>
-
-        {/* Load More */}
-        <div className="mt-8 text-center pb-8">
-          <button className="rounded-full border border-violet-500/50 bg-violet-500/10 px-8 py-3 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20">
-            Load More Posts
-          </button>
-        </div>
-      </div>
-    </main>
-  );
+  return <FeedPageClient posts={posts} />;
 }

@@ -15,23 +15,37 @@ export default function AuthGuard({
 
   useEffect(() => {
     const supabase = createSupabaseBrowser();
+    let cancelled = false;
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
+    const validateSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) {
+          return;
+        }
+
         if (!data.session) {
           router.replace("/login");
           return;
         }
 
         setAuthorized(true);
-      })
-      .catch(() => {
-        router.replace("/login");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      } catch {
+        if (!cancelled) {
+          router.replace("/login");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void validateSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (loading) {

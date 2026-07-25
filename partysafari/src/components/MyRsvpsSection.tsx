@@ -112,7 +112,9 @@ export default function MyRsvpsSection() {
       if (!isMounted) return;
 
       if (error) {
-        console.error("Failed to load RSVPs:", error);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Failed to load RSVPs:", error);
+        }
         setErrorMessage("Unable to load your RSVPs right now.");
         setRsvps([]);
       } else {

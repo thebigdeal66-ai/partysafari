@@ -44,9 +44,31 @@ function CreateEventForm() {
 
     const userId = sessionData.session.user.id;
 
-    const combinedStartTime = eventDate && startTime
-      ? new Date(`${eventDate}T${startTime}`).toISOString()
-      : null;
+    // Build the ISO timestamp by parsing components explicitly to avoid
+    // year-ambiguity bugs that can occur when passing raw date strings to
+    // the Date constructor (e.g. producing year 0226 instead of 2026).
+    let combinedStartTime: string | null = null;
+    if (eventDate && startTime) {
+      const [yearStr, monthStr, dayStr] = eventDate.split('-');
+      const [hoursStr, minutesStr] = startTime.split(':');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10) - 1;
+      const day = parseInt(dayStr, 10);
+      const hours = parseInt(hoursStr, 10);
+      const minutes = parseInt(minutesStr || '0', 10);
+      if (!Number.isFinite(year) || year < 2000 || year > 2200) {
+        setNotice('Invalid event date — please check that the year is correct.');
+        setSaving(false);
+        return;
+      }
+      const d = new Date(year, month, day, hours, minutes);
+      if (Number.isNaN(d.getTime())) {
+        setNotice('Invalid event date or time.');
+        setSaving(false);
+        return;
+      }
+      combinedStartTime = d.toISOString();
+    }
 
     const { data, error } = await supabase.from('events').insert({
       title,
@@ -60,6 +82,7 @@ function CreateEventForm() {
       cover_image: coverImage || null,
       ticket_link: ticketLink || null,
       created_by: userId,
+      status: 'published',
       created_at: new Date().toISOString(),
     });
 

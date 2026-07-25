@@ -70,12 +70,14 @@ export default function FollowingSection() {
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) {
-        console.error("Supabase auth.getUser error:", {
-          message: userError.message,
-          details: (userError as any).details ?? null,
-          hint: (userError as any).hint ?? null,
-          code: (userError as any).code ?? null,
-        });
+        if (process.env.NODE_ENV === "development") {
+          console.error("Supabase auth.getUser error:", {
+            message: userError.message,
+            details: (userError as any).details ?? null,
+            hint: (userError as any).hint ?? null,
+            code: (userError as any).code ?? null,
+          });
+        }
         setErrorMessage("Unable to verify user session.");
         setIsLoading(false);
         return;

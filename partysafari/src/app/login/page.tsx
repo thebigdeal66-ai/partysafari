@@ -35,7 +35,7 @@ export default function LoginPage() {
     }
 
     if (data.session) {
-      router.push("/requests");
+      router.push("/dashboard");
     }
   }
 
