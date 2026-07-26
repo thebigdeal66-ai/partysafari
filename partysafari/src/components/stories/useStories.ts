@@ -73,6 +73,15 @@ function isMissingTableError(error: { code?: string | null; message?: string | n
   return message.includes("pgrst205") || (message.includes("relation") && message.includes("does not exist"));
 }
 
+function nextRealtimeTopicSuffix() {
+  const globalRef = globalThis as typeof globalThis & {
+    __partysafariRealtimeTopicCounter__?: number;
+  };
+  const next = (globalRef.__partysafariRealtimeTopicCounter__ || 0) + 1;
+  globalRef.__partysafariRealtimeTopicCounter__ = next;
+  return next;
+}
+
 async function loadProfiles(supabase: ReturnType<typeof createSupabaseBrowser>, profileIds: string[]) {
   if (profileIds.length === 0) {
     return new Map<string, StoryAuthorSummary>();
@@ -499,7 +508,8 @@ export function useStories(options: UseStoriesOptions = {}): UseStoriesState {
       return;
     }
 
-    const channel = supabase.channel(`stories:${options.authorId || "all"}:${options.venueId || "all"}:${options.eventId || "all"}`);
+    const storiesTopic = `stories:${options.authorId || "all"}:${options.venueId || "all"}:${options.eventId || "all"}:${nextRealtimeTopicSuffix()}`;
+    const channel = supabase.channel(storiesTopic);
     channel.on(
       "postgres_changes",
       {
@@ -520,7 +530,7 @@ export function useStories(options: UseStoriesOptions = {}): UseStoriesState {
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
         if (process.env.NODE_ENV === "development") {
           console.warn("[DiscoverTonight] stories subscription status", {
-            channel: `stories:${options.authorId || "all"}:${options.venueId || "all"}:${options.eventId || "all"}`,
+            channel: storiesTopic,
             status,
           });
         }
@@ -545,7 +555,8 @@ export function useStories(options: UseStoriesOptions = {}): UseStoriesState {
       return;
     }
 
-    const channel = supabase.channel(`story-metrics:${options.authorId || "all"}:${options.venueId || "all"}:${options.eventId || "all"}`);
+    const storyMetricsTopic = `story-metrics:${options.authorId || "all"}:${options.venueId || "all"}:${options.eventId || "all"}:${nextRealtimeTopicSuffix()}`;
+    const channel = supabase.channel(storyMetricsTopic);
     const handleMetricChange = (payload: { new?: { story_id?: string | null }; old?: { story_id?: string | null } }) => {
       const changedStoryId = payload.new?.story_id || payload.old?.story_id || null;
       if (!changedStoryId || !storyIds.has(changedStoryId)) {
@@ -582,7 +593,7 @@ export function useStories(options: UseStoriesOptions = {}): UseStoriesState {
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
         if (process.env.NODE_ENV === "development") {
           console.warn("[DiscoverTonight] story metrics subscription status", {
-            channel: `story-metrics:${options.authorId || "all"}:${options.venueId || "all"}:${options.eventId || "all"}`,
+            channel: storyMetricsTopic,
             status,
           });
         }

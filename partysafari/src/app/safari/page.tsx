@@ -269,12 +269,30 @@ export default function SafariPage() {
   }, []);
 
   const loadAuth = useCallback(async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    try {
+      const sessionResult = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise<null>((resolve) => {
+          globalThis.setTimeout(() => resolve(null), 4000);
+        }),
+      ]);
 
-    setUserId(session?.user?.id ?? null);
-    setAuthChecked(true);
+      if (sessionResult === null) {
+        setUserId(null);
+        setAuthChecked(true);
+        return;
+      }
+
+      const {
+        data: { session },
+      } = sessionResult;
+
+      setUserId(session?.user?.id ?? null);
+      setAuthChecked(true);
+    } catch {
+      setUserId(null);
+      setAuthChecked(true);
+    }
   }, [supabase]);
 
   const loadVenuesAndEvents = useCallback(async () => {

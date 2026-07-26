@@ -1,11 +1,13 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { isAuthLockAbortError } from "@/lib/supabaseDiagnostics";
+import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 
 type BrowserSupabaseClient = ReturnType<typeof createBrowserClient>;
 
 type GlobalSupabaseState = {
   client?: BrowserSupabaseClient;
   authSubscriptionInitialized?: boolean;
+  realtimeDisabledPatched?: boolean;
   userIdCache?: { value: string | null; at: number };
   userIdPromise?: Promise<string | null> | null;
 };
@@ -44,12 +46,34 @@ export function createSupabaseBrowser() {
 
   if (!state.authSubscriptionInitialized) {
     state.authSubscriptionInitialized = true;
-    state.client.auth.onAuthStateChange(() => {
-      // Keep callback sync and defer work to avoid auth deadlocks.
-      globalThis.setTimeout(() => {
+    if (!TEMP_KILL_SWITCH.disableAuthStateChangeListener) {
+      state.client.auth.onAuthStateChange(() => {
         invalidateUserCache();
-      }, 0);
-    });
+      });
+    }
+  }
+
+  if (TEMP_KILL_SWITCH.disableSupabaseRealtime && !state.realtimeDisabledPatched) {
+    state.realtimeDisabledPatched = true;
+    const noopChannel = {
+      on() {
+        return this;
+      },
+      subscribe() {
+        return this;
+      },
+      unsubscribe() {
+        return this;
+      },
+    };
+
+    const clientAny = state.client as unknown as {
+      channel: (...args: unknown[]) => unknown;
+      removeChannel: (...args: unknown[]) => Promise<unknown>;
+    };
+
+    clientAny.channel = (..._args: unknown[]) => noopChannel;
+    clientAny.removeChannel = async (..._args: unknown[]) => ({ data: null });
   }
 
   return state.client;

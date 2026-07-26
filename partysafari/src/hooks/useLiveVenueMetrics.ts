@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createSupabaseBrowser, resolveCurrentUserId } from "@/lib/supabaseClient";
 import { logSupabaseQueryError, normalizeUnknownError } from "@/lib/supabaseDiagnostics";
 import { getCrowdLevel } from "@/lib/venueCheckInUtils";
+import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 
 export type VenueLiveMetrics = {
   venueId: string;
@@ -85,30 +86,132 @@ function isEventCurrent(event: EventRow, nowIso: string) {
   return started && notEnded;
 }
 
+declare global {
+  interface Window {
+    __RADAR_TRACE__?: Array<Record<string, unknown>>;
+    __RADAR_LAST_USER_INTERACTION__?: number;
+  }
+}
+
+function radarTrace(source: string, event: string, detail: Record<string, unknown> = {}) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+
+  const payload = {
+    ts: new Date().toISOString(),
+    source,
+    event,
+    ...detail,
+  };
+
+  console.log(`[RadarTrace][${source}] ${event}`, payload);
+
+  if (typeof window !== "undefined") {
+    const bucket = window.__RADAR_TRACE__ || [];
+    bucket.push(payload);
+    window.__RADAR_TRACE__ = bucket;
+  }
+}
+
 export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiveVenueMetricsResult {
+  const isDev = process.env.NODE_ENV === "development";
+  const effectRunCountsRef = useRef<Record<string, number>>({});
+
+  const logEffectRun = useCallback((effectName: string, line: number, dependencies: string[]) => {
+    if (!isDev) {
+      return;
+    }
+
+    const count = (effectRunCountsRef.current[effectName] || 0) + 1;
+    effectRunCountsRef.current[effectName] = count;
+    const lastInteraction = typeof window !== "undefined" ? (window.__RADAR_LAST_USER_INTERACTION__ || 0) : 0;
+
+    radarTrace("useLiveVenueMetrics", `effect:${effectName}`, {
+      line,
+      count,
+      dependencies,
+      sinceInteractionMs: Date.now() - lastInteraction,
+      venueCount: options.venueIds?.length || 0,
+      visibleVenueCount: options.visibleVenueIds?.length || 0,
+    });
+
+    if (count > 10 && Date.now() - lastInteraction > 1500) {
+      radarTrace("useLiveVenueMetrics", "probable-infinite-effect-loop", {
+        line,
+        effectName,
+        count,
+        dependencies,
+      });
+    }
+  }, [isDev, options.venueIds, options.visibleVenueIds]);
+
+  const traceSetState = useCallback(<T,>(stateName: string, line: number, nextValue: SetStateAction<T>) => {
+    if (!isDev) {
+      return;
+    }
+    radarTrace("useLiveVenueMetrics", "setState", {
+      line,
+      state: stateName,
+      updateKind: typeof nextValue === "function" ? "updater" : "value",
+    });
+  }, [isDev]);
+
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [metricsByVenueId, setMetricsByVenueId] = useState<Record<string, VenueLiveMetrics>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
+  const friendIdsRef = useRef<Set<string>>(new Set());
   const refreshTimersRef = useRef<Map<string, number>>(new Map());
+  const globalRefreshTimerRef = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const queuedRefreshRef = useRef(false);
   const queuedVenueIdsRef = useRef<Set<string>>(new Set());
 
-  const allVenueIds = useMemo(() => uniqueIds(options.venueIds || []), [options.venueIds]);
-  const visibleVenueIds = useMemo(() => uniqueIds(options.visibleVenueIds || []), [options.visibleVenueIds]);
+  useEffect(() => {
+    friendIdsRef.current = friendIds;
+  }, [friendIds]);
+
+  const allVenueIds = useMemo(() => {
+    radarTrace("useLiveVenueMetrics", "memo:allVenueIds", {
+      line: 148,
+      inputVenueCount: options.venueIds?.length || 0,
+    });
+    return uniqueIds(options.venueIds || []);
+  }, [options.venueIds]);
+  const visibleVenueIds = useMemo(() => {
+    radarTrace("useLiveVenueMetrics", "memo:visibleVenueIds", {
+      line: 155,
+      inputVenueCount: options.visibleVenueIds?.length || 0,
+    });
+    return uniqueIds(options.visibleVenueIds || []);
+  }, [options.visibleVenueIds]);
 
   const refresh = useCallback(
     async (venueIdsInput?: string[]) => {
+      if (TEMP_KILL_SWITCH.disableLiveFeedPolling) {
+        setLoading(false);
+        return;
+      }
+
+      radarTrace("useLiveVenueMetrics", "callback:refresh:start", {
+        line: 163,
+        requestedVenueCount: venueIdsInput?.length || allVenueIds.length,
+      });
       const requestedVenueIds = uniqueIds(venueIdsInput || allVenueIds);
       if (requestedVenueIds.length === 0) {
+        traceSetState("loading", 169, false);
         setLoading(false);
         return;
       }
 
       if (isRefreshingRef.current) {
+        radarTrace("useLiveVenueMetrics", "callback:refresh:queue", {
+          line: 175,
+          requestedVenueCount: requestedVenueIds.length,
+        });
         queuedRefreshRef.current = true;
         for (const venueId of requestedVenueIds) {
           queuedVenueIdsRef.current.add(venueId);
@@ -120,6 +223,7 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
       const venueIds = requestedVenueIds;
 
       try {
+      traceSetState("error", 188, null);
       setError(null);
       const nowIso = new Date().toISOString();
 
@@ -167,6 +271,7 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
         });
       }
 
+      traceSetState("error", 230, checkinsResult.error?.message || storiesResult.error?.message || eventsResult.error?.message || null);
       setError(
         checkinsResult.error?.message || storiesResult.error?.message || eventsResult.error?.message || null
       );
@@ -186,7 +291,7 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
         checkinsByVenue.set(venueId, (checkinsByVenue.get(venueId) || 0) + 1);
 
         const profileId = row.profile_id || null;
-        if (!profileId || !friendIds.has(profileId)) {
+        if (!profileId || !friendIdsRef.current.has(profileId)) {
           continue;
         }
 
@@ -213,6 +318,7 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
         eventsByVenue.set(venueId, (eventsByVenue.get(venueId) || 0) + 1);
       }
 
+      traceSetState("metricsByVenueId", 274, "updater");
       setMetricsByVenueId((current) => {
         const next = { ...current };
         for (const venueId of venueIds) {
@@ -236,6 +342,7 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
         return next;
       });
 
+      traceSetState("loading", 298, false);
       setLoading(false);
       } finally {
         isRefreshingRef.current = false;
@@ -243,15 +350,26 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
           queuedRefreshRef.current = false;
           const queuedVenueIds = Array.from(queuedVenueIdsRef.current);
           queuedVenueIdsRef.current.clear();
+          radarTrace("useLiveVenueMetrics", "callback:refresh:dequeue", {
+            line: 305,
+            queuedVenueCount: queuedVenueIds.length,
+          });
           void refresh(queuedVenueIds.length > 0 ? queuedVenueIds : undefined);
         }
       }
     },
-    [allVenueIds, friendIds, supabase]
+    [allVenueIds, supabase]
   );
 
   useEffect(() => {
+    if (TEMP_KILL_SWITCH.disableLiveFeedPolling) {
+      setLoading(false);
+      return;
+    }
+
+    logEffectRun("bootstrap", 313, ["options.enabled", "refresh", "supabase"]);
     if (options.enabled === false) {
+      traceSetState("loading", 315, false);
       setLoading(false);
       return;
     }
@@ -265,8 +383,10 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
       }
 
       setCurrentUserId(userId);
+      traceSetState("currentUserId", 329, userId);
 
       if (!userId) {
+        traceSetState("friendIds", 332, "new Set()" as unknown as Set<string>);
         setFriendIds(new Set());
         void refresh();
         return;
@@ -300,6 +420,7 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
           nextFriendIds.add(row.user_id);
         }
       }
+      traceSetState("friendIds", 364, nextFriendIds);
       setFriendIds(nextFriendIds);
     };
 
@@ -307,11 +428,19 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
 
     return () => {
       cancelled = true;
+      radarTrace("useLiveVenueMetrics", "cleanup:bootstrap", { line: 372 });
     };
   }, [options.enabled, refresh, supabase]);
 
   useEffect(() => {
+    if (TEMP_KILL_SWITCH.disableLiveFeedPolling) {
+      setLoading(false);
+      return;
+    }
+
+    logEffectRun("initial-refresh", 376, ["allVenueIds", "options.enabled", "refresh"]);
     if (options.enabled === false || allVenueIds.length === 0) {
+      traceSetState("loading", 378, false);
       setLoading(false);
       return;
     }
@@ -320,6 +449,11 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
   }, [allVenueIds, options.enabled, refresh]);
 
   useEffect(() => {
+    if (TEMP_KILL_SWITCH.disableLiveFeedPolling || TEMP_KILL_SWITCH.disableSupabaseRealtime || TEMP_KILL_SWITCH.disablePresenceTracking) {
+      return;
+    }
+
+    logEffectRun("subscriptions", 386, ["allVenueIds", "currentUserId", "options.enabled", "options.subscribeVisibleOnly", "refresh", "supabase", "visibleVenueIds"]);
     if (options.enabled === false) {
       return;
     }
@@ -333,6 +467,11 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
 
     const channels = targetIds.map((venueId) => {
       const channel = supabase.channel(`live-venue-metrics:${venueId}`);
+      radarTrace("useLiveVenueMetrics", "subscription:create", {
+        line: 398,
+        channel: `live-venue-metrics:${venueId}`,
+        venueId,
+      });
 
       const triggerRefresh = () => {
         if (refreshTimersRef.current.has(venueId)) {
@@ -362,18 +501,14 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
         { event: "*", schema: "public", table: "events", filter: `venue_id=eq.${venueId}` },
         triggerRefresh
       );
-      channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "friendships" },
-        () => {
-          if (!currentUserId) {
-            return;
-          }
-          void refresh([venueId]);
-        }
-      );
 
       void channel.subscribe((status: string) => {
+        radarTrace("useLiveVenueMetrics", "subscription:status", {
+          line: 430,
+          channel: `live-venue-metrics:${venueId}`,
+          venueId,
+          status,
+        });
         if (status === "SUBSCRIBED") {
           return;
         }
@@ -389,19 +524,77 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
       return channel;
     });
 
+    const scheduleGlobalRefresh = () => {
+      if (!currentUserId) {
+        return;
+      }
+      if (globalRefreshTimerRef.current !== null) {
+        return;
+      }
+
+      globalRefreshTimerRef.current = window.setTimeout(() => {
+        globalRefreshTimerRef.current = null;
+        void refresh();
+      }, 250);
+    };
+
+    const globalFriendshipChannel = supabase.channel("live-venue-metrics:friendships");
+    radarTrace("useLiveVenueMetrics", "subscription:create", {
+      line: 461,
+      channel: "live-venue-metrics:friendships",
+    });
+    globalFriendshipChannel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "friendships" },
+      scheduleGlobalRefresh
+    );
+    void globalFriendshipChannel.subscribe((status: string) => {
+      radarTrace("useLiveVenueMetrics", "subscription:status", {
+        line: 471,
+        channel: "live-venue-metrics:friendships",
+        status,
+      });
+      if (status === "SUBSCRIBED") {
+        return;
+      }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[DiscoverTonight] global live metrics subscription status", { status });
+        }
+        window.setTimeout(() => {
+          void refresh();
+        }, 300);
+      }
+    });
+
     return () => {
+      radarTrace("useLiveVenueMetrics", "cleanup:subscriptions", {
+        line: 485,
+        venueSubscriptionCount: channels.length,
+      });
       for (const timer of refreshTimersRef.current.values()) {
         window.clearTimeout(timer);
       }
       refreshTimersRef.current.clear();
 
+      if (globalRefreshTimerRef.current !== null) {
+        window.clearTimeout(globalRefreshTimerRef.current);
+        globalRefreshTimerRef.current = null;
+      }
+
       for (const channel of channels) {
         void supabase.removeChannel(channel);
       }
+      void supabase.removeChannel(globalFriendshipChannel);
     };
   }, [allVenueIds, currentUserId, options.enabled, options.subscribeVisibleOnly, refresh, supabase, visibleVenueIds]);
 
   useEffect(() => {
+    if (TEMP_KILL_SWITCH.disableLiveFeedPolling || TEMP_KILL_SWITCH.disableSetInterval) {
+      return;
+    }
+
+    logEffectRun("polling-refresh", 507, ["allVenueIds", "options.enabled", "refresh"]);
     if (allVenueIds.length === 0 || options.enabled === false) {
       return;
     }
@@ -412,10 +605,13 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
 
     return () => {
       window.clearInterval(intervalId);
+      radarTrace("useLiveVenueMetrics", "cleanup:polling-refresh", { line: 517 });
     };
   }, [allVenueIds, options.enabled, refresh]);
 
   useEffect(() => {
+    logEffectRun("seed-empty-metrics", 521, ["allVenueIds"]);
+    traceSetState("metricsByVenueId", 522, "updater");
     setMetricsByVenueId((current) => {
       const next = { ...current };
       for (const venueId of allVenueIds) {
@@ -425,6 +621,9 @@ export function useLiveVenueMetrics(options: UseLiveVenueMetricsOptions): UseLiv
       }
       return next;
     });
+    return () => {
+      radarTrace("useLiveVenueMetrics", "cleanup:seed-empty-metrics", { line: 532 });
+    };
   }, [allVenueIds]);
 
   return {

@@ -5,6 +5,7 @@ import { calculatePartyScore, calculatePartyScores, getCachedPartyScore } from "
 import { emptyPartyScore, type PartyScoreDetails } from "@/lib/partyScore";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { normalizeUnknownError } from "@/lib/supabaseDiagnostics";
+import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 
 type UsePartyScoresOptions = {
   venueIds: string[];
@@ -31,30 +32,92 @@ function uniqueIds(values: string[]) {
   return Array.from(new Set(values.filter((value) => typeof value === "string" && value.length > 0)));
 }
 
+declare global {
+  interface Window {
+    __RADAR_TRACE__?: Array<Record<string, unknown>>;
+    __RADAR_LAST_USER_INTERACTION__?: number;
+  }
+}
+
+function radarTrace(source: string, event: string, detail: Record<string, unknown> = {}) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+
+  const payload = {
+    ts: new Date().toISOString(),
+    source,
+    event,
+    ...detail,
+  };
+  console.log(`[RadarTrace][${source}] ${event}`, payload);
+  if (typeof window !== "undefined") {
+    const bucket = window.__RADAR_TRACE__ || [];
+    bucket.push(payload);
+    window.__RADAR_TRACE__ = bucket;
+  }
+}
+
 export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresResult {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [scoresByVenueId, setScoresByVenueId] = useState<Record<string, PartyScoreDetails>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const refreshTimersRef = useRef<Map<string, number>>(new Map());
+  const effectCountsRef = useRef<Record<string, number>>({});
 
-  const venueIds = useMemo(() => uniqueIds(options.venueIds || []), [options.venueIds]);
-  const visibleVenueIds = useMemo(() => uniqueIds(options.visibleVenueIds || []), [options.visibleVenueIds]);
+  const traceEffect = useCallback((name: string, line: number, deps: string[]) => {
+    const count = (effectCountsRef.current[name] || 0) + 1;
+    effectCountsRef.current[name] = count;
+    const sinceInteractionMs = typeof window !== "undefined"
+      ? Date.now() - (window.__RADAR_LAST_USER_INTERACTION__ || 0)
+      : Number.NaN;
+    radarTrace("usePartyScores", `effect:${name}`, { line, count, deps, sinceInteractionMs });
+    if (count > 10 && Number.isFinite(sinceInteractionMs) && sinceInteractionMs > 1500) {
+      radarTrace("usePartyScores", "probable-infinite-effect-loop", { line, effect: name, deps, count });
+    }
+  }, []);
+
+  const traceSetState = useCallback((state: string, line: number, updateKind: "value" | "updater") => {
+    radarTrace("usePartyScores", "setState", { state, line, updateKind });
+  }, []);
+
+  const venueIds = useMemo(() => {
+    radarTrace("usePartyScores", "memo:venueIds", { line: 70, inputCount: options.venueIds?.length || 0 });
+    return uniqueIds(options.venueIds || []);
+  }, [options.venueIds]);
+  const visibleVenueIds = useMemo(() => {
+    radarTrace("usePartyScores", "memo:visibleVenueIds", { line: 74, inputCount: options.visibleVenueIds?.length || 0 });
+    return uniqueIds(options.visibleVenueIds || []);
+  }, [options.visibleVenueIds]);
 
   const refresh = useCallback(
     async (venueIdsInput?: string[], forceRefresh = false) => {
-      const targetVenueIds = uniqueIds(venueIdsInput || venueIds);
-      if (targetVenueIds.length === 0) {
+      if (TEMP_KILL_SWITCH.disablePartyScorePolling) {
         setLoading(false);
         return;
       }
 
+      radarTrace("usePartyScores", "callback:refresh:start", {
+        line: 79,
+        forceRefresh,
+        requestedCount: venueIdsInput?.length || venueIds.length,
+      });
+      const targetVenueIds = uniqueIds(venueIdsInput || venueIds);
+      if (targetVenueIds.length === 0) {
+        traceSetState("loading", 87, "value");
+        setLoading(false);
+        return;
+      }
+
+      traceSetState("error", 92, "value");
       setError(null);
       try {
         const nextScores = await calculatePartyScores(targetVenueIds, {
           supabase,
           forceRefresh,
         });
+        traceSetState("scoresByVenueId", 99, "updater");
         setScoresByVenueId((current) => ({
           ...current,
           ...nextScores,
@@ -67,15 +130,19 @@ export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresRe
             error: normalized.message,
           });
         }
+        traceSetState("error", 113, "value");
         setError(normalized.message || "Unable to calculate Party Score right now.");
       } finally {
+        traceSetState("loading", 116, "value");
         setLoading(false);
       }
     },
-    [supabase, venueIds]
+    [supabase, traceSetState, venueIds]
   );
 
   useEffect(() => {
+    traceEffect("seed-cached-scores", 123, ["venueIds"]);
+    traceSetState("scoresByVenueId", 124, "updater");
     setScoresByVenueId((current) => {
       const next = { ...current };
       for (const venueId of venueIds) {
@@ -83,19 +150,38 @@ export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresRe
       }
       return next;
     });
-  }, [venueIds]);
+    return () => {
+      radarTrace("usePartyScores", "cleanup:seed-cached-scores", { line: 132 });
+    };
+  }, [traceEffect, traceSetState, venueIds]);
 
   useEffect(() => {
-    if (options.enabled === false || venueIds.length === 0) {
+    if (TEMP_KILL_SWITCH.disablePartyScorePolling) {
       setLoading(false);
       return;
     }
 
+    traceEffect("initial-refresh", 136, ["options.enabled", "refresh", "venueIds.length"]);
+    if (options.enabled === false || venueIds.length === 0) {
+      traceSetState("loading", 138, "value");
+      setLoading(false);
+      return;
+    }
+
+    traceSetState("loading", 143, "value");
     setLoading(true);
     void refresh();
-  }, [options.enabled, refresh, venueIds.length]);
+    return () => {
+      radarTrace("usePartyScores", "cleanup:initial-refresh", { line: 146 });
+    };
+  }, [options.enabled, refresh, traceEffect, traceSetState, venueIds.length]);
 
   useEffect(() => {
+    if (TEMP_KILL_SWITCH.disablePartyScorePolling || TEMP_KILL_SWITCH.disableSupabaseRealtime || TEMP_KILL_SWITCH.disablePresenceTracking) {
+      return;
+    }
+
+    traceEffect("subscriptions", 150, ["options.enabled", "options.subscribeVisibleOnly", "refresh", "supabase", "venueIds", "visibleVenueIds"]);
     if (options.enabled === false) {
       return;
     }
@@ -120,6 +206,7 @@ export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresRe
 
     const channels = targetVenueIds.map((venueId) => {
       const channel = supabase.channel(`party-score:${venueId}`);
+      radarTrace("usePartyScores", "subscription:create", { line: 171, channel: `party-score:${venueId}`, venueId });
       channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: "venue_checkins", filter: `venue_id=eq.${venueId}` },
@@ -151,6 +238,7 @@ export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresRe
         () => scheduleRefresh(venueId)
       );
       void channel.subscribe((status: string) => {
+        radarTrace("usePartyScores", "subscription:status", { line: 201, channel: `party-score:${venueId}`, venueId, status });
         if (status === "SUBSCRIBED") {
           return;
         }
@@ -167,6 +255,7 @@ export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresRe
     });
 
     return () => {
+      radarTrace("usePartyScores", "cleanup:subscriptions", { line: 218, count: channels.length });
       for (const timer of refreshTimersRef.current.values()) {
         window.clearTimeout(timer);
       }
@@ -176,9 +265,14 @@ export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresRe
         void supabase.removeChannel(channel);
       }
     };
-  }, [options.enabled, options.subscribeVisibleOnly, refresh, supabase, venueIds, visibleVenueIds]);
+  }, [options.enabled, options.subscribeVisibleOnly, refresh, supabase, traceEffect, venueIds, visibleVenueIds]);
 
   useEffect(() => {
+    if (TEMP_KILL_SWITCH.disablePartyScorePolling || TEMP_KILL_SWITCH.disableSetInterval) {
+      return;
+    }
+
+    traceEffect("polling-refresh", 232, ["options.enabled", "refresh", "venueIds.length"]);
     if (options.enabled === false || venueIds.length === 0) {
       return;
     }
@@ -189,8 +283,9 @@ export function usePartyScores(options: UsePartyScoresOptions): UsePartyScoresRe
 
     return () => {
       window.clearInterval(intervalId);
+      radarTrace("usePartyScores", "cleanup:polling-refresh", { line: 241 });
     };
-  }, [options.enabled, refresh, venueIds.length]);
+  }, [options.enabled, refresh, traceEffect, venueIds.length]);
 
   return {
     scoresByVenueId,
@@ -208,18 +303,28 @@ export function usePartyScore(venueId: string | null, enabled = true): UsePartyS
 
   const refresh = useCallback(
     async (forceRefresh = false) => {
-      if (!venueId || !enabled) {
+      if (TEMP_KILL_SWITCH.disablePartyScorePolling) {
         setLoading(false);
         return;
       }
 
+      radarTrace("usePartyScore", "callback:refresh:start", { line: 257, venueId, enabled, forceRefresh });
+      if (!venueId || !enabled) {
+        radarTrace("usePartyScore", "setState", { line: 259, state: "loading", updateKind: "value" });
+        setLoading(false);
+        return;
+      }
+
+      radarTrace("usePartyScore", "setState", { line: 264, state: "loading", updateKind: "value" });
       setLoading(true);
+      radarTrace("usePartyScore", "setState", { line: 265, state: "error", updateKind: "value" });
       setError(null);
       try {
         const next = await calculatePartyScore(venueId, {
           supabase,
           forceRefresh,
         });
+        radarTrace("usePartyScore", "setState", { line: 272, state: "partyScore", updateKind: "value" });
         setPartyScore(next);
       } catch (cause) {
         const normalized = normalizeUnknownError(cause, "Unable to calculate Party Score right now.");
@@ -229,8 +334,10 @@ export function usePartyScore(venueId: string | null, enabled = true): UsePartyS
             error: normalized.message,
           });
         }
+        radarTrace("usePartyScore", "setState", { line: 281, state: "error", updateKind: "value" });
         setError(normalized.message || "Unable to calculate Party Score right now.");
       } finally {
+        radarTrace("usePartyScore", "setState", { line: 284, state: "loading", updateKind: "value" });
         setLoading(false);
       }
     },
@@ -238,23 +345,37 @@ export function usePartyScore(venueId: string | null, enabled = true): UsePartyS
   );
 
   useEffect(() => {
+    radarTrace("usePartyScore", "effect:seed-and-refresh", { line: 291, deps: ["enabled", "refresh", "venueId"], venueId, enabled });
     if (!venueId || !enabled) {
+      radarTrace("usePartyScore", "setState", { line: 293, state: "partyScore", updateKind: "value" });
       setPartyScore(emptyPartyScore(venueId || ""));
+      radarTrace("usePartyScore", "setState", { line: 294, state: "loading", updateKind: "value" });
       setLoading(false);
       return;
     }
 
+    radarTrace("usePartyScore", "setState", { line: 299, state: "partyScore", updateKind: "value" });
     setPartyScore(getCachedPartyScore(venueId) || emptyPartyScore(venueId));
     void refresh();
+    return () => {
+      radarTrace("usePartyScore", "cleanup:seed-and-refresh", { line: 302, venueId });
+    };
   }, [enabled, refresh, venueId]);
 
   useEffect(() => {
+    if (TEMP_KILL_SWITCH.disablePartyScorePolling || TEMP_KILL_SWITCH.disableSupabaseRealtime || TEMP_KILL_SWITCH.disablePresenceTracking) {
+      return;
+    }
+
+    radarTrace("usePartyScore", "effect:subscription", { line: 306, deps: ["enabled", "refresh", "supabase", "venueId"], venueId, enabled });
     if (!venueId || !enabled) {
       return;
     }
 
     const channel = supabase.channel(`party-score-single:${venueId}`);
+    radarTrace("usePartyScore", "subscription:create", { line: 312, channel: `party-score-single:${venueId}` });
     const forceRefresh = () => {
+      radarTrace("usePartyScore", "subscription:event", { line: 314, channel: `party-score-single:${venueId}` });
       void refresh(true);
     };
 
@@ -265,6 +386,7 @@ export function usePartyScore(venueId: string | null, enabled = true): UsePartyS
     channel.on("postgres_changes", { event: "*", schema: "public", table: "story_reactions" }, forceRefresh);
     channel.on("postgres_changes", { event: "*", schema: "public", table: "friendships" }, forceRefresh);
     void channel.subscribe((status: string) => {
+      radarTrace("usePartyScore", "subscription:status", { line: 325, channel: `party-score-single:${venueId}`, status });
       if (status === "SUBSCRIBED") {
         return;
       }
@@ -279,6 +401,7 @@ export function usePartyScore(venueId: string | null, enabled = true): UsePartyS
     });
 
     return () => {
+      radarTrace("usePartyScore", "cleanup:subscription", { line: 339, channel: `party-score-single:${venueId}` });
       void supabase.removeChannel(channel);
     };
   }, [enabled, refresh, supabase, venueId]);

@@ -19,10 +19,23 @@ export default function AuthGuard({
 
     const validateSession = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<null>((resolve) => {
+            globalThis.setTimeout(() => resolve(null), 4000);
+          }),
+        ]);
+
         if (cancelled) {
           return;
         }
+
+        if (sessionResult === null) {
+          router.replace("/login");
+          return;
+        }
+
+        const { data } = sessionResult;
 
         if (!data.session) {
           router.replace("/login");

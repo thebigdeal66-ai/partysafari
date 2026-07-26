@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { FRIEND_STATE_SYNC_EVENT, type FriendStateSyncDetail } from "@/lib/friendSync";
+import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 
 type NotificationType =
   | "like_activity"
@@ -298,6 +299,7 @@ export default function NotificationCenter() {
 
   useEffect(() => {
     if (!userId) return;
+    if (TEMP_KILL_SWITCH.disableNotificationRealtime || TEMP_KILL_SWITCH.disableSupabaseRealtime) return;
 
     const channel = supabase.channel(`notifications-${userId}`)
       .on(

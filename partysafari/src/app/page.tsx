@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePartyScores } from "@/hooks/usePartyScore";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
@@ -108,7 +107,6 @@ function isWithinNextDay(isoString: string) {
 }
 
 export default function Home() {
-  const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -119,20 +117,31 @@ export default function Home() {
     let mounted = true;
 
     const checkSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<null>((resolve) => {
+            globalThis.setTimeout(() => resolve(null), 4000);
+          }),
+        ]);
 
-      if (!mounted) {
-        return;
+        if (!mounted) {
+          return;
+        }
+
+        if (sessionResult === null) {
+          setAuthChecked(true);
+          return;
+        }
+
+        setAuthChecked(true);
+      } catch {
+        if (!mounted) {
+          return;
+        }
+
+        setAuthChecked(true);
       }
-
-      if (session) {
-        router.replace("/dashboard");
-        return;
-      }
-
-      setAuthChecked(true);
     };
 
     void checkSession();
@@ -140,7 +149,7 @@ export default function Home() {
     return () => {
       mounted = false;
     };
-  }, [router, supabase]);
+  }, [supabase]);
 
   const loadHomeData = useCallback(async () => {
     if (!authChecked) {
@@ -316,16 +325,6 @@ export default function Home() {
     subscribeVisibleOnly: false,
   });
 
-  if (!authChecked) {
-    return (
-      <main className="min-h-screen bg-[#07070B] px-6 py-12 text-white">
-        <div className="mx-auto max-w-7xl animate-pulse rounded-3xl border border-white/10 bg-[#10061f] p-8 text-white/65">
-          Checking PartySafari session...
-        </div>
-      </main>
-    );
-  }
-
   const trendingTonight = useMemo(() => {
     return [...events]
       .sort((a, b) => {
@@ -370,6 +369,16 @@ export default function Home() {
       .filter((event) => (event.event_type || "").toLowerCase() === "dj" || (event.performer_name || "").toLowerCase().includes("dj"))
       .slice(0, 6);
   }, [events]);
+
+  if (!authChecked) {
+    return (
+      <main className="min-h-screen bg-[#07070B] px-6 py-12 text-white">
+        <div className="mx-auto max-w-7xl animate-pulse rounded-3xl border border-white/10 bg-[#10061f] p-8 text-white/65">
+          Checking PartySafari session...
+        </div>
+      </main>
+    );
+  }
 
   const renderEventCard = (event: EventLite) => {
     const image = event.venue?.image_url || event.venue?.photo_url;

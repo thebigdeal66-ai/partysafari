@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import NotificationCenter from "@/components/NotificationCenter";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { FRIEND_STATE_SYNC_EVENT } from "@/lib/friendSync";
+import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 
 const MESSAGES_READ_EVENT = "partysafari:messages-read";
 
@@ -127,7 +128,9 @@ export default function NavBar() {
     };
 
     void refreshUnreadTotal();
-    void setupRealtime();
+    if (!TEMP_KILL_SWITCH.disableSupabaseRealtime) {
+      void setupRealtime();
+    }
     window.addEventListener(MESSAGES_READ_EVENT, handleMessagesRead);
     window.addEventListener(FRIEND_STATE_SYNC_EVENT, handleFriendSync);
 
@@ -143,7 +146,8 @@ export default function NavBar() {
 
   return (
     <nav className="bg-[#07070B] border-b border-white/10 px-6 py-4">
-      <div className="mx-auto max-w-6xl flex items-center justify-between">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex items-center justify-between">
         <Link href="/" className="text-2xl font-bold text-white">
           🔥 PartySafari
         </Link>
@@ -202,10 +206,10 @@ export default function NavBar() {
               Safari Mode
             </Link>
             <Link
-              href="/map"
+              href="/radar"
               className="text-white/80 hover:text-violet-300 transition-colors"
             >
-              Map
+              Safari Radar™
             </Link>
             <Link
               href="/dashboard"
@@ -221,6 +225,45 @@ export default function NavBar() {
             </Link>
           </div>
           <NotificationCenter />
+        </div>
+        </div>
+
+        <div className="mt-3 flex items-center gap-4 overflow-x-auto whitespace-nowrap pb-1 lg:hidden">
+          <Link
+            href="/"
+            className="text-sm text-white/80 hover:text-violet-300 transition-colors"
+          >
+            Home
+          </Link>
+          <Link
+            href="/feed"
+            className="text-sm text-white/80 hover:text-violet-300 transition-colors"
+          >
+            Feed
+          </Link>
+          <Link
+            href="/messages"
+            className="relative inline-flex items-center text-sm text-white/80 hover:text-violet-300 transition-colors"
+          >
+            <span>Messages</span>
+            {messageUnreadTotal > 0 ? (
+              <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                {messageUnreadTotal}
+              </span>
+            ) : null}
+          </Link>
+          <Link
+            href="/dashboard"
+            className="text-sm text-white/80 hover:text-violet-300 transition-colors"
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/venue-owner"
+            className="text-sm text-white/80 hover:text-violet-300 transition-colors"
+          >
+            Venue Owner
+          </Link>
         </div>
       </div>
     </nav>
