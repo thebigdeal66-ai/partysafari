@@ -8,14 +8,16 @@ This document covers *how* we build it.
 
 ## Repository Layout
 
-The deployable Next.js application lives in the **`partysafari/`** subdirectory:
+The deployable Next.js application lives in the repository-relative **`partysafari/`**
+directory. The repository also carries an unused root-level `src/` shadow scaffold that nothing
+imports:
 
 ```text
 .
 ├── MASTERPLAN.md            # Product constitution
 ├── CONTRIBUTING.md          # This file
 ├── AI_CONTEXT.md            # Rules for AI coding agents
-├── src/                     # Legacy root scaffold — DO NOT EXTEND
+├── src/                     # Unused shadow scaffold — nothing imports it; never modify
 └── partysafari/             # The application
     ├── db/                  # Numbered SQL migrations (001 … 017)
     ├── src/
@@ -30,6 +32,18 @@ The deployable Next.js application lives in the **`partysafari/`** subdirectory:
 ```
 
 All commands below are run from `partysafari/` unless stated otherwise.
+
+Two rules follow from this layout:
+
+- **Make changes beneath `partysafari/`** unless the task explicitly concerns repository-level
+  documentation or configuration — the root README, these root docs, or CI config.
+- **Never modify the root-level `src/` scaffold.** It ships nothing; editing it produces code
+  that looks live in an editor and never reaches users.
+
+Refer to locations with repository-relative paths such as `partysafari/src/lib/` rather than
+absolute filesystem paths. An absolute path like `/workspaces/partysafari/partysafari` is
+specific to one Codespace or machine, varies between environments, and is not a portable
+identifier for the project.
 
 ## Getting Started
 
@@ -327,6 +341,25 @@ testing.
 action in one reflects in the other within about two seconds, then navigate away and confirm
 subscriptions close.
 
+## Peak-Hours Production Safety
+
+Our users are out between roughly **8:00 p.m. and 2:00 a.m. Eastern Time**. That window is when
+the app matters most and when a bad production deploy does the most damage. The policy below
+governs **merging and deploying to production** — it is not a freeze on engineering work.
+
+- **Routine production deployments wait for daytime.** Features, refactors, and non-urgent
+  fixes are promoted to production outside the 8:00 p.m.–2:00 a.m. ET window.
+- **Documentation-only changes are exempt.** They carry no runtime risk and may ship at any
+  time.
+- **Emergency hotfixes are permitted whenever they are needed** to restore availability,
+  security, data integrity, or critical user functionality. A broken night is worse than an
+  off-hours deploy.
+- **An explicitly approved release may ship inside the window** when there is a justified
+  operational reason. Record the approver and the reason in the PR or the release notes.
+- **Normal development is never blocked.** Feature work, branch pushes, pull requests, test
+  runs, and Vercel Preview deployments are all unrestricted during the window. Only production
+  merges and deploys are restricted.
+
 ## Production Deployment Checklist
 
 Run through this before promoting to production.
@@ -344,8 +377,8 @@ Run through this before promoting to production.
 
 **Deploy**
 
-- [ ] Deploy during a low-traffic window. For a nightlife app that means **daytime** — never
-      between 8pm and 2am local time.
+- [ ] Deploy during a low-traffic window. For a nightlife app that means **daytime** — see
+      Peak-Hours Production Safety above for the exemptions.
 - [ ] Watch the build and the first minutes of runtime logs.
 
 **Post-deploy smoke test (production, on a phone)**

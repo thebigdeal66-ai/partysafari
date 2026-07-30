@@ -16,8 +16,10 @@ Human contributors should read [`CONTRIBUTING.md`](./CONTRIBUTING.md) and
 
 **The active project is this repository checkout. Nothing outside it may be modified, ever.**
 
-Inside this checkout, the deployable application lives in the **`partysafari/`** subdirectory.
-That is where all feature work happens.
+Inside this checkout, the deployable Next.js application lives in the repository-relative
+**`partysafari/`** directory. That is where all feature work happens. The repository also
+contains an unused root-level `src/` shadow scaffold that nothing imports and that must never
+be modified.
 
 ```text
 <repo root>                  ← active project boundary
@@ -25,7 +27,7 @@ That is where all feature work happens.
 ├── CONTRIBUTING.md          ← engineering workflow
 ├── AI_CONTEXT.md            ← this file
 ├── package.json             ← root stub, 2 deps — NOT the app
-├── src/                     ← legacy scaffold — DO NOT EXTEND
+├── src/                     ← unused shadow scaffold — nothing imports it; NEVER MODIFY
 │   ├── app/dashboard/page.tsx
 │   └── lib/supabase/{client,server}.ts
 └── partysafari/             ← THE APPLICATION
@@ -47,16 +49,28 @@ repository the root-level `src/` tree and root `package.json` are a vestige of t
 they contain an old Supabase scaffold and a dashboard stub that the real application does not
 use.
 
+The nesting also shows up in absolute filesystem paths. A Codespace commonly reports the app as
+`/workspaces/partysafari/partysafari` — the repository, then the application directory inside
+it. The repeated segment is not a mistake, but the absolute prefix is environment-specific.
+Read such a path as the repository-relative `partysafari/` and refer to it that way.
+
 Rules:
 
 - **Never modify anything outside this checkout's boundaries.** No writing to parent
   directories, no `../`, no touching a sibling clone, no editing global config.
-- **Never extend the root-level `src/`.** It is not imported by the application. Adding to it
+- **Make your changes beneath `partysafari/`** unless the task explicitly concerns
+  repository-level documentation or configuration — the root README, the root documents, or CI
+  config.
+- **Never modify or extend the root-level `src/` scaffold.** Nothing imports it. Adding to it
   produces code that appears to work in an editor and ships nothing.
 - **The root `package.json` is not the app's manifest.** Dependencies belong to
   `partysafari/package.json`.
 - If you find yourself uncertain which copy of a file is live, check whether it is under
   `partysafari/src/` and whether anything imports it via the `@/` alias. If neither, it is dead.
+- **Use repository-relative paths**, such as `partysafari/src/hooks/`. An absolute path like
+  `/workspaces/partysafari/partysafari` is an artifact of one Codespace or machine, varies
+  between environments, and is not a portable identifier for the project. Never anchor
+  instructions, imports, or configuration to one.
 - The Vercel project's Root Directory is `partysafari`. Build and lint from there.
 
 ## 2. Repository Rules
@@ -302,6 +316,7 @@ and polling. If you see these, they are deliberate — do not remove them.
 Never do any of the following without explicit human instruction:
 
 - Modify anything outside this repository checkout.
+- Modify the unused root-level `src/` shadow scaffold.
 - Add, remove, or upgrade a dependency.
 - Edit `next.config.ts`, `tsconfig.json`, `eslint.config.mjs`, or `postcss.config.mjs`.
 - Edit or delete an existing migration in `partysafari/db/`.

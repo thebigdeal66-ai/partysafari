@@ -81,11 +81,18 @@ This reflects what is actually in the repository today.
 
 ### Repository layout
 
-The deployable application lives in the **`partysafari/`** subdirectory. The repository root
-also contains a small legacy scaffold (`src/lib/supabase/client.ts`, `src/lib/supabase/server.ts`,
-`src/app/dashboard/page.tsx`, and a two-dependency `package.json`) that predates the real app.
-That root-level `src/` tree is **not** the product and must not be extended. All feature work
-happens under `partysafari/`.
+The deployable application lives in the repository-relative **`partysafari/`** directory. The
+repository root also contains an unused `src/` shadow scaffold (`src/lib/supabase/client.ts`,
+`src/lib/supabase/server.ts`, `src/app/dashboard/page.tsx`, and a two-dependency
+`package.json`) that predates the real app and that nothing imports. That root-level `src/`
+tree is **not** the product: it must never be modified or extended. All feature work happens
+beneath `partysafari/`, and the only changes that belong at the repository root are
+repository-level documentation and configuration — the root README, these root documents, and
+CI config.
+
+Paths in this document are repository-relative on purpose. An absolute path such as
+`/workspaces/partysafari/partysafari` describes one Codespace or one machine, differs between
+environments, and must not be treated as a portable identifier for the project.
 
 ## Product Pillars
 
