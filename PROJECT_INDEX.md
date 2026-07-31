@@ -39,7 +39,7 @@ There is **no test framework, no CI configuration, no route handlers (`route.ts`
 middleware** anywhere in the repository.
 
 **Scale:** ~23,200 lines of TypeScript/TSX across 20 routes, 34 components, 5 hooks, 10 library
-modules, and 17 SQL migration files.
+modules, and 19 SQL migration files.
 
 **Implementation maturity — mixed, and mostly further along than a prototype:**
 
@@ -97,7 +97,7 @@ modules, and 17 SQL migration files.
     ├── postcss.config.mjs
     ├── README.md                    ← unmodified create-next-app boilerplate
     ├── public/                      ← 5 default Next.js SVGs, all unused by app code
-    ├── db/                          ← 17 hand-numbered SQL migrations (001–017)
+    ├── db/                          ← 19 hand-numbered SQL migrations (001–019)
     └── src/
         ├── app/                     ← App Router: 20 routes, 1 root layout
         ├── components/              ← 34 components + 1 co-located hook, grouped by feature
@@ -163,7 +163,7 @@ Twenty routes, all under `partysafari/src/app/`. There is exactly **one layout f
 | `/requests` | `app/requests/page.tsx` (527 ln, client) | `app/layout.tsx` | **Complete** — talent-booking board: browse open requests, submit priced responses, accept an offer. Unrelated to friend requests. |
 | `/safari` | `app/safari/page.tsx` (1,913 ln, client) | `app/layout.tsx` | **Complete** — the largest file in the repo. Route preferences, algorithmic multi-stop route generation (scoring + greedy nearest-neighbour), manual stop editing, save/load plans, live navigation with geolocation. |
 | `/signup` | `app/signup/page.tsx` (100 ln, client) | `app/layout.tsx` | **Complete** — email + password registration with email-confirmation messaging. |
-| `/venue-owner` | `app/venue-owner/page.tsx` (1,283 ln, client) | `app/layout.tsx` | **Partial** — seven-tab operator dashboard. Overview, Events, Tonight, Specials, Gallery, and Settings are functional; **Analytics is a placeholder** with hardcoded numbers. Ownership gating is fail-closed on `venues.owner_id`, which does not exist yet (see [§13](#13-technical-debt)). |
+| `/venue-owner` | `app/venue-owner/page.tsx` (1,283 ln, client) | `app/layout.tsx` | **Partial** — seven-tab operator dashboard. Overview, Events, Tonight, Specials, Gallery, and Settings are functional; **Analytics is a placeholder** with hardcoded numbers. Ownership gating is fail-closed on `venues.owner_id`, added by migration 018 but not yet applied or backfilled (see [§13](#13-technical-debt)). |
 | `/venues/[slug]` | `app/venues/[slug]/page.tsx` (631 ln, client) | `app/layout.tsx` | **Complete** — public venue page: info, tonight's and upcoming events, stories, live check-in metrics, Party Score, friends-here. |
 
 **Routes reachable from `NavBar`:** `/`, `/dashboard`, `/feed`, `/friends`, `/messages`,
@@ -492,6 +492,8 @@ triggers).
 | `015_add_checkout_function.sql` | `check_out_of_venue()` |
 | `016_create_story_metrics.sql` | `story_views`, `story_reactions` + RLS |
 | `017_discover_tonight_stabilization.sql` | `venues`, `venue_checkins`, `stories`, `friendships` (351 ln, the largest migration) |
+| `018_venue_ownership.sql` | `venues.owner_id`, corrected `is_venue_owner()`, owner-only UPDATE on `venues` |
+| `019_venue_content_rls.sql` | `events` RLS rewrite — venue-owned vs community events split into separate policies |
 
 **Tables with no migration in `db/`:** `profiles`, `friend_requests`, `conversations`,
 `conversation_participants`, `direct_messages`, `requests`, `request_responses`, `safari_plans`,
@@ -578,7 +580,7 @@ in-memory and lost on reload.
 | **Messaging** | **Complete** | `/messages` (839 ln). 1:1 conversations over `conversations`, `conversation_participants`, `direct_messages`; user search; unread counts via `get_unread_message_counts` with a `last_read_at` fallback; realtime inserts; `NavBar` badge. No group chat, no attachments, no typing indicators. |
 | **Notifications** | **Complete** | `NotificationCenter` (552 ln) over `notifications`. Ten types: `like_activity`, `like_comment`, `comment`, `follow`, `rsvp`, `booking_request`, `booking_accepted`, `direct_message`, `friend_request`, `friend_request_accepted`. Per-item and mark-all read; realtime INSERT/UPDATE/DELETE. |
 | **Venue Profiles** | **Complete** | `/venues/[slug]` (631 ln) with events, stories, live metrics, Party Score, friends-here, check-in. |
-| **Venue Claims** | **❌ Does not exist** | There is no claim flow, no claim table, no verification workflow, and no claim UI anywhere. `/venue-owner` resolves ownership through the single relationship `venues.owner_id = auth.uid()` and denies access on any miss — but `venues` has no `owner_id` column yet, so nobody currently resolves as an owner ([SECURITY_NOTES.md](SECURITY_NOTES.md)). A `verified` field is read for display only; nothing in the app ever sets it. |
+| **Venue Claims** | **❌ Does not exist** | There is no claim flow, no claim table, no verification workflow, and no claim UI anywhere. `/venue-owner` resolves ownership through the single relationship `venues.owner_id = auth.uid()` and denies access on any miss. Migration 018 adds that column, but it is unapplied and unbackfilled, so nobody currently resolves as an owner ([SECURITY_NOTES.md](SECURITY_NOTES.md)). A `verified` field is read for display only; nothing in the app ever sets it. |
 | **Events** | **Complete** | `/events` (886 ln) with multi-axis filtering, `/events/[id]` detail, `/events/create`, plus owner-side CRUD in `EventsManager`. |
 | **Check-ins** | **Complete** | `VenueCheckInButton` + `check_in_to_venue` / `check_out_of_venue` RPCs, `venue_checkins` table with `expires_at`, crowd tiers in `lib/venueCheckInUtils.ts`. |
 | **Maps** | **Complete** | Leaflet + OpenStreetMap in three places: Safari Radar (clustering, glow, tiers), Safari route map (numbered stops + polyline), and the orphaned `TonightNearMeMap`. All real maps; nothing simulated. |
@@ -622,7 +624,7 @@ on the code as it stands.
 | Maps | 80% | Three real Leaflet surfaces. | Distances are miles in Safari/Discover but kilometres in `TonightNearMeMap`; the largest map component is dead. |
 | Authentication | 70% | Sign-up, sign-in, client-side gating. | **No sign-out**, no OAuth, no password reset, no middleware — protection is client-side only. |
 | Activity Feed | 70% | Real server-rendered feed with dedupe and likes. | "Load More" inert; 30-item cap; likes split across `activity_likes` and `activity_feed_likes`. |
-| Venue Owner dashboard | 65% | Six of seven tabs functional; ownership resolution is fail-closed. | **Analytics tab is hardcoded placeholder data**; `venues` has no `owner_id` column, so the dashboard resolves no venue for anyone until a migration adds one. |
+| Venue Owner dashboard | 65% | Six of seven tabs functional; ownership resolution is fail-closed. | **Analytics tab is hardcoded placeholder data**; `venues.owner_id` exists only in unapplied migration 018 and has no owner assigned, so the dashboard resolves no venue for anyone. |
 | Follows | 50% | Table, toggle, and story-ordering integration work. | Only browse surface (`FollowingSection`) is dead code; no followers list; duplicates the Friends graph. |
 | Profiles (browse) | 20% | Layout and card component exist. | `/profiles` renders **hardcoded mock data**; filter buttons are inert; no query, no pagination. |
 | Search | 0% | — | No global search of any kind. |
@@ -746,13 +748,18 @@ The application-layer hole is closed: `/venue-owner` now resolves the operator's
 single relationship `venues.owner_id = auth.uid()` and denies access on any error or miss. The
 five-column probe and the "first venue in the database" fallback are gone.
 
-What remains is a schema gap. `public.venues` (migration 017) has **no ownership column**, and
-there is no `venue_owners` or `venue_claims` table, so the lookup currently matches nothing and
-every user sees the empty state — fail-closed, but the dashboard is unreachable until a migration
-adds `owner_id`. Relatedly, `is_venue_owner()` (migration 012) probes those same non-existent
-columns via `to_jsonb` and therefore **always returns false**, which silently neuters the `events`
-RLS policies that depend on it. See [SECURITY_NOTES.md](SECURITY_NOTES.md) for the full RLS
-assessment and the proposed (not applied) migration.
+The schema gap is closed in `db/`. Migration `018_venue_ownership.sql` adds `venues.owner_id`,
+replaces the `is_venue_owner()` `to_jsonb` probe (which always returned false, silently neutering
+every `events` policy that depended on it) with a direct comparison, and makes `venues` UPDATE
+owner-only. `019_venue_content_rls.sql` then rewrites the `events` policies so venue ownership —
+not event authorship — governs writes to venue-attached events, while keeping user-created
+community events (`venue_id IS NULL`) working under `created_by = auth.uid()`.
+
+**Neither migration has been applied to the hosted database, and no owner has been assigned**, so
+`venues.owner_id` is NULL everywhere and every user still sees the empty state. The behaviour is
+unchanged in practice; what changed is that it is now fail-closed by design rather than by
+accident. There is still no `venue_owners` or `venue_claims` table and no claim flow. See
+[SECURITY_NOTES.md](SECURITY_NOTES.md) for the full RLS assessment.
 
 ### 10. Oversized files
 
@@ -899,7 +906,7 @@ Quick-reference reading lists. Paths are relative to `partysafari/` unless noted
 ### Working on the Venue Owner dashboard
 1. `src/app/venue-owner/page.tsx` — the seven-tab shell (1,283 ln)
 2. `src/components/venue-owner/EventsManager.tsx` — event CRUD
-3. ⚠️ Ownership resolves only via `venues.owner_id`, a column that does not exist yet — so the dashboard is fail-closed and empty for every account ([SECURITY_NOTES.md](SECURITY_NOTES.md)). The Analytics tab is hardcoded placeholder data.
+3. ⚠️ Ownership resolves only via `venues.owner_id`, added by unapplied migration 018 and not yet assigned to any venue — so the dashboard is fail-closed and empty for every account ([SECURITY_NOTES.md](SECURITY_NOTES.md)). The Analytics tab is hardcoded placeholder data.
 
 ### Working on the Activity Feed
 1. `src/app/feed/page.tsx` — the only server-side fetch in the app
