@@ -88,6 +88,10 @@ type SettingsDraft = {
   vipAvailable: boolean;
 };
 
+// The single ownership relationship the dashboard trusts. Any other signal
+// (or a failed lookup) denies access rather than falling back to another venue.
+const VENUE_OWNER_COLUMN = "owner_id";
+
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "events", label: "Events" },
@@ -261,30 +265,21 @@ function VenueOwnerDashboard() {
     subscribeOwnStoryViewCounts: true,
   });
 
-  const findVenueForUser = useCallback(
+  const resolveOwnedVenue = useCallback(
     async (userId: string) => {
-      const ownerColumns = ["owner_id", "created_by", "profile_id", "manager_id", "user_id"];
+      const { data, error } = await supabase
+        .from("venues")
+        .select("*")
+        .eq(VENUE_OWNER_COLUMN, userId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      for (const column of ownerColumns) {
-        const { data, error } = await supabase
-          .from("venues")
-          .select("*")
-          .eq(column, userId)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && data) {
-          return data as VenueRecord;
-        }
-
-        if (error && !error.message.toLowerCase().includes("column")) {
-          break;
-        }
+      if (error || !data) {
+        return null;
       }
 
-      const { data } = await supabase.from("venues").select("*").order("updated_at", { ascending: false }).limit(1).maybeSingle();
-      return (data as VenueRecord | null) ?? null;
+      return data as VenueRecord;
     },
     [supabase]
   );
@@ -314,25 +309,25 @@ function VenueOwnerDashboard() {
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
+    setVenue(null);
+    setTonightEvent(null);
+    setGalleryUrls([]);
+    setPerformers([]);
+    setSelectedPerformerIds([]);
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
+    // getUser() validates the token against the auth server; getSession() only
+    // reads locally stored state and must not gate an authorization decision.
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
 
-    if (sessionError || !session?.user?.id) {
+    if (userError || !userId) {
       setLoading(false);
-      pushToast("Unable to resolve account session.", "error");
       return;
     }
 
-    const venueRow = await findVenueForUser(session.user.id);
-    if (!venueRow) {
-      setVenue(null);
-      setTonightEvent(null);
-      setGalleryUrls([]);
+    const venueRow = await resolveOwnedVenue(userId);
+    if (!venueRow?.id) {
       setLoading(false);
-      pushToast("No venue found for this account yet.", "info");
       return;
     }
 
@@ -436,12 +431,14 @@ function VenueOwnerDashboard() {
       setSelectedPerformerIds([]);
     }
 
+    await loadPerformers();
+
     setLoading(false);
-  }, [findVenueForUser, pushToast, supabase]);
+  }, [loadPerformers, resolveOwnedVenue, supabase]);
 
   useEffect(() => {
-    void Promise.all([loadPerformers(), loadDashboard()]);
-  }, [loadDashboard, loadPerformers]);
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const heroImage = venue?.image_url || venue?.photo_url || galleryUrls[0] || null;
 
@@ -753,8 +750,9 @@ function VenueOwnerDashboard() {
       <main className="min-h-screen bg-[#07070B] px-6 py-6 text-white">
         <div className="mx-auto max-w-4xl rounded-3xl border border-white/10 bg-[#10061f] p-6">
           <h1 className="text-3xl font-bold">Venue Owner Dashboard</h1>
-          <p className="mt-3 text-white/70">
-            No venue record is linked to this account yet. Add a venue in the database and return to this dashboard.
+          <p className="mt-3 text-white/70">No venue is connected to this account.</p>
+          <p className="mt-2 text-sm text-white/50">
+            If you manage a venue and expect to see it here, contact support to have it linked to your account.
           </p>
         </div>
       </main>
