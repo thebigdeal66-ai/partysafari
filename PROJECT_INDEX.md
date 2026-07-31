@@ -163,7 +163,7 @@ Twenty routes, all under `partysafari/src/app/`. There is exactly **one layout f
 | `/requests` | `app/requests/page.tsx` (527 ln, client) | `app/layout.tsx` | **Complete** — talent-booking board: browse open requests, submit priced responses, accept an offer. Unrelated to friend requests. |
 | `/safari` | `app/safari/page.tsx` (1,913 ln, client) | `app/layout.tsx` | **Complete** — the largest file in the repo. Route preferences, algorithmic multi-stop route generation (scoring + greedy nearest-neighbour), manual stop editing, save/load plans, live navigation with geolocation. |
 | `/signup` | `app/signup/page.tsx` (100 ln, client) | `app/layout.tsx` | **Complete** — email + password registration with email-confirmation messaging. |
-| `/venue-owner` | `app/venue-owner/page.tsx` (1,283 ln, client) | `app/layout.tsx` | **Partial** — seven-tab operator dashboard. Overview, Events, Tonight, Specials, Gallery, and Settings are functional; **Analytics is a placeholder** with hardcoded numbers. Ownership gating is weak (see [§13](#13-technical-debt)). |
+| `/venue-owner` | `app/venue-owner/page.tsx` (1,283 ln, client) | `app/layout.tsx` | **Partial** — seven-tab operator dashboard. Overview, Events, Tonight, Specials, Gallery, and Settings are functional; **Analytics is a placeholder** with hardcoded numbers. Ownership gating is fail-closed on `venues.owner_id`, which does not exist yet (see [§13](#13-technical-debt)). |
 | `/venues/[slug]` | `app/venues/[slug]/page.tsx` (631 ln, client) | `app/layout.tsx` | **Complete** — public venue page: info, tonight's and upcoming events, stories, live check-in metrics, Party Score, friends-here. |
 
 **Routes reachable from `NavBar`:** `/`, `/dashboard`, `/feed`, `/friends`, `/messages`,
@@ -578,7 +578,7 @@ in-memory and lost on reload.
 | **Messaging** | **Complete** | `/messages` (839 ln). 1:1 conversations over `conversations`, `conversation_participants`, `direct_messages`; user search; unread counts via `get_unread_message_counts` with a `last_read_at` fallback; realtime inserts; `NavBar` badge. No group chat, no attachments, no typing indicators. |
 | **Notifications** | **Complete** | `NotificationCenter` (552 ln) over `notifications`. Ten types: `like_activity`, `like_comment`, `comment`, `follow`, `rsvp`, `booking_request`, `booking_accepted`, `direct_message`, `friend_request`, `friend_request_accepted`. Per-item and mark-all read; realtime INSERT/UPDATE/DELETE. |
 | **Venue Profiles** | **Complete** | `/venues/[slug]` (631 ln) with events, stories, live metrics, Party Score, friends-here, check-in. |
-| **Venue Claims** | **❌ Does not exist** | There is no claim flow, no claim table, no verification workflow, and no claim UI anywhere. `/venue-owner` infers ownership by probing five possible columns (`owner_id`, `created_by`, `profile_id`, `manager_id`, `user_id`) on `venues`, and **falls back to the first venue in the database if none match**. A `verified` field is read for display only; nothing in the app ever sets it. |
+| **Venue Claims** | **❌ Does not exist** | There is no claim flow, no claim table, no verification workflow, and no claim UI anywhere. `/venue-owner` resolves ownership through the single relationship `venues.owner_id = auth.uid()` and denies access on any miss — but `venues` has no `owner_id` column yet, so nobody currently resolves as an owner ([SECURITY_NOTES.md](SECURITY_NOTES.md)). A `verified` field is read for display only; nothing in the app ever sets it. |
 | **Events** | **Complete** | `/events` (886 ln) with multi-axis filtering, `/events/[id]` detail, `/events/create`, plus owner-side CRUD in `EventsManager`. |
 | **Check-ins** | **Complete** | `VenueCheckInButton` + `check_in_to_venue` / `check_out_of_venue` RPCs, `venue_checkins` table with `expires_at`, crowd tiers in `lib/venueCheckInUtils.ts`. |
 | **Maps** | **Complete** | Leaflet + OpenStreetMap in three places: Safari Radar (clustering, glow, tiers), Safari route map (numbered stops + polyline), and the orphaned `TonightNearMeMap`. All real maps; nothing simulated. |
@@ -622,7 +622,7 @@ on the code as it stands.
 | Maps | 80% | Three real Leaflet surfaces. | Distances are miles in Safari/Discover but kilometres in `TonightNearMeMap`; the largest map component is dead. |
 | Authentication | 70% | Sign-up, sign-in, client-side gating. | **No sign-out**, no OAuth, no password reset, no middleware — protection is client-side only. |
 | Activity Feed | 70% | Real server-rendered feed with dedupe and likes. | "Load More" inert; 30-item cap; likes split across `activity_likes` and `activity_feed_likes`. |
-| Venue Owner dashboard | 65% | Six of seven tabs functional. | **Analytics tab is hardcoded placeholder data**; ownership resolution falls back to the first venue in the database. |
+| Venue Owner dashboard | 65% | Six of seven tabs functional; ownership resolution is fail-closed. | **Analytics tab is hardcoded placeholder data**; `venues` has no `owner_id` column, so the dashboard resolves no venue for anyone until a migration adds one. |
 | Follows | 50% | Table, toggle, and story-ordering integration work. | Only browse surface (`FollowingSection`) is dead code; no followers list; duplicates the Friends graph. |
 | Profiles (browse) | 20% | Layout and card component exist. | `/profiles` renders **hardcoded mock data**; filter buttons are inert; no query, no pagination. |
 | Search | 0% | — | No global search of any kind. |
@@ -740,14 +740,19 @@ a future contributor debugging a timer that never fires has no obvious path from
 `lib/runtimeKillSwitch.ts`. All eleven flags are currently `false`, and the `TEMP_` prefix suggests
 they were never meant to be permanent.
 
-### 9. Venue ownership is effectively unenforced
+### 9. Venue ownership has no canonical column
 
-`findVenueForUser()` in `app/venue-owner/page.tsx` (lines 264–289) tries five candidate owner
-columns in sequence and, **if none match, returns the first venue in the database**. `AuthGuard`
-only proves that *someone* is logged in. Combined with the absence of any claim or verification
-flow, any authenticated user reaching `/venue-owner` may be handed edit access to a venue they do
-not own. The `is_venue_owner()` SQL function exists in migration 012 but is never called from
-application code. **This is the highest-severity item in this list.**
+The application-layer hole is closed: `/venue-owner` now resolves the operator's venue through the
+single relationship `venues.owner_id = auth.uid()` and denies access on any error or miss. The
+five-column probe and the "first venue in the database" fallback are gone.
+
+What remains is a schema gap. `public.venues` (migration 017) has **no ownership column**, and
+there is no `venue_owners` or `venue_claims` table, so the lookup currently matches nothing and
+every user sees the empty state — fail-closed, but the dashboard is unreachable until a migration
+adds `owner_id`. Relatedly, `is_venue_owner()` (migration 012) probes those same non-existent
+columns via `to_jsonb` and therefore **always returns false**, which silently neuters the `events`
+RLS policies that depend on it. See [SECURITY_NOTES.md](SECURITY_NOTES.md) for the full RLS
+assessment and the proposed (not applied) migration.
 
 ### 10. Oversized files
 
@@ -894,7 +899,7 @@ Quick-reference reading lists. Paths are relative to `partysafari/` unless noted
 ### Working on the Venue Owner dashboard
 1. `src/app/venue-owner/page.tsx` — the seven-tab shell (1,283 ln)
 2. `src/components/venue-owner/EventsManager.tsx` — event CRUD
-3. ⚠️ Ownership resolution falls back to the first venue in the database, and the Analytics tab is hardcoded placeholder data
+3. ⚠️ Ownership resolves only via `venues.owner_id`, a column that does not exist yet — so the dashboard is fail-closed and empty for every account ([SECURITY_NOTES.md](SECURITY_NOTES.md)). The Analytics tab is hardcoded placeholder data.
 
 ### Working on the Activity Feed
 1. `src/app/feed/page.tsx` — the only server-side fetch in the app
