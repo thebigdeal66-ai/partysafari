@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowser, resolveCurrentUserId } from "@/lib/supabaseClient";
-import { emptyPartyScore, toSafePartyScore, type PartyScore } from "@/lib/partyScore";
+import { emptyPartyScore, toSafePartyScore, type PartyScoreDetails } from "@/lib/partyScore";
+import { explainVenue, type PsiExplanation } from "@/lib/psi";
 import { usePartyScores } from "@/hooks/usePartyScore";
 import { useLiveVenueMetrics } from "@/hooks/useLiveVenueMetrics";
 import { useStories } from "@/components/stories/useStories";
@@ -66,7 +67,14 @@ export type DiscoverEvent = {
 };
 
 export type DiscoverVenueCardData = DiscoverVenue & {
-  partyScore: PartyScore;
+  /**
+   * The engine's full result, not just the public `PartyScore` face of it. The
+   * value assigned here has always been a `PartyScoreDetails`; naming the wider
+   * type is what lets PSI read `signals` and `breakdown` without a second fetch.
+   */
+  partyScore: PartyScoreDetails;
+  /** PSI's read on the room, derived from `partyScore` — no extra fetch. */
+  psiExplanation: PsiExplanation;
   currentEvent: string | null;
   currentEntertainment: string | null;
   distanceMiles: number | null;
@@ -109,7 +117,10 @@ export type DiscoverStorySpotlight = {
 export type DiscoverRecommendation = {
   id: string;
   venue: DiscoverVenueCardData;
+  /** PSI reason sentences, flattened. Kept for callers that only want the text. */
   reasons: string[];
+  /** The same reasons with the signal and value behind each one still attached. */
+  explanation: PsiExplanation;
   recommendationScore: number;
 };
 
@@ -742,11 +753,20 @@ export function useDiscoverTonightData(): DiscoverState {
             ? getDistanceMiles(coords || DEFAULT_COORDS, { lat: venue.latitude, lng: venue.longitude })
             : null;
 
+        const currentEvent = primaryEvent?.title || null;
+        const currentEntertainment = primaryEvent?.performerName || primaryEvent?.eventType || null;
+
         return {
           ...venue,
           partyScore,
-          currentEvent: primaryEvent?.title || null,
-          currentEntertainment: primaryEvent?.performerName || primaryEvent?.eventType || null,
+          // Room-level read only. The recommendations block builds a second,
+          // personalized explanation once the viewer's saves and genres are known.
+          psiExplanation: explainVenue(partyScore, {
+            distanceMiles,
+            programmedEvent: currentEvent || currentEntertainment,
+          }),
+          currentEvent,
+          currentEntertainment,
           distanceMiles,
           distanceLabel: formatDistanceLabel(distanceMiles),
           liveCheckins,
@@ -865,32 +885,43 @@ export function useDiscoverTonightData(): DiscoverState {
 
     const recommendations = hotRightNow
       .map((venue) => {
+        // Ranking stays where it was: these weights order the list. What a user
+        // is *told* comes from PSI, so the explanation is traceable to the same
+        // signals the Party Score used rather than restated here.
         let recommendationScore = venue.partyScore?.score ?? 0;
-        const reasons: string[] = [];
+        const matchingGenres = venue.musicGenres.filter((genre) => (genrePreferenceCounts.get(genre.toLowerCase()) || 0) > 0);
         if (venue.friendsHereCount > 0) {
           recommendationScore += venue.friendsHereCount * 10;
-          reasons.push(venue.friendsHereCount === 1 ? "One friend is here." : `${venue.friendsHereCount} friends are here.`);
         }
         if (savedVenueIds.has(venue.id)) {
           recommendationScore += 18;
-          reasons.push("You saved an event here.");
         }
-        const matchingGenres = venue.musicGenres.filter((genre) => (genrePreferenceCounts.get(genre.toLowerCase()) || 0) > 0);
         if (matchingGenres.length > 0) {
           recommendationScore += Math.min(14, matchingGenres.length * 5);
-          reasons.push(`Matches your ${matchingGenres[0]} streak.`);
         }
         if (venue.storyCount >= 3) {
           recommendationScore += 10;
-          reasons.push("Stories are stacking up here.");
         }
         if ((venue.partyScore?.trend ?? "stable") === "up") {
           recommendationScore += 8;
-          reasons.push("Trending quickly tonight.");
         }
-        return { id: venue.id, venue, reasons, recommendationScore };
+
+        const explanation = explainVenue(venue.partyScore, {
+          distanceMiles: venue.distanceMiles,
+          programmedEvent: venue.currentEvent || venue.currentEntertainment,
+          savedEvent: savedVenueIds.has(venue.id),
+          matchingGenres,
+        });
+
+        return {
+          id: venue.id,
+          venue,
+          reasons: explanation.reasons.map((reason) => reason.text),
+          explanation,
+          recommendationScore,
+        };
       })
-      .filter((entry) => entry.reasons.length > 0)
+      .filter((entry) => entry.explanation.hasEvidence)
       .sort((left, right) => right.recommendationScore - left.recommendationScore)
       .slice(0, 6);
 

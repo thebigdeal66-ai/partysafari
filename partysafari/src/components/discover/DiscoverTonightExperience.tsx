@@ -6,6 +6,7 @@ import StoryRailSurface from "@/components/stories/StoryRailSurface";
 import DiscoverHero from "@/components/discover/DiscoverHero";
 import EventStartingSoonCard from "@/components/discover/EventStartingSoonCard";
 import VenuePartyCard from "@/components/discover/VenuePartyCard";
+import WhyThisVenue from "@/components/discover/WhyThisVenue";
 import {
   CardSkeleton,
   EmptyState,
@@ -113,6 +114,7 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
                   litEligible={lit.eligibilityByVenueId[venue.id]?.canLit ?? false}
                   litMessage={lit.messageByVenueId[venue.id] ?? null}
                   onLit={lit.submitLit}
+                  psiExplanation={venue.psiExplanation}
                 />
               ))}
             </div>
@@ -429,16 +431,7 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
                         </div>
                         <SectionLink href={`/venues/${entry.venue.slug}`}>Open Venue</SectionLink>
                       </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {entry.reasons.map((reason) => (
-                          <span
-                            key={reason}
-                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80"
-                          >
-                            {reason}
-                          </span>
-                        ))}
-                      </div>
+                      <WhyThisVenue explanation={entry.explanation} defaultOpen className="mt-4" />
                     </div>
                   );
                 })}
