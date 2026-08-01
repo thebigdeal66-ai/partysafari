@@ -54,6 +54,17 @@ export type PartyScoreSignals = {
   recentRsvpActivity: number;
   recentEventActivity: number;
   recentFriendActivity: number;
+  /** Active Lit endorsements. Standing count, feeds baseEnergy. */
+  litSignals: number;
+  /** Lit endorsements inside the recent window. Feeds recencyLift. */
+  recentLitSignals: number;
+  /**
+   * Sum of per-endorsement decay factors (see `litSignals.ts`). Continuous
+   * rather than a count, and the only lit input to momentum: an endorsement
+   * from an hour ago has to weigh less than one from a minute ago, which a
+   * count cannot express.
+   */
+  litDecayWeight: number;
 };
 
 export type PartyScoreWeights = {
@@ -72,6 +83,9 @@ export type PartyScoreWeights = {
   recentEventActivity: number;
   recentFriendActivity: number;
   scoreDeltaMomentum: number;
+  litSignals: number;
+  recentLitSignals: number;
+  litMomentum: number;
 };
 
 export type PartyScoreBreakdown = {
@@ -104,6 +118,15 @@ export const DEFAULT_PARTY_SCORE_WEIGHTS: PartyScoreWeights = {
   recentEventActivity: 1.5,
   recentFriendActivity: 2.3,
   scoreDeltaMomentum: 2.6,
+  // Lit is a stronger claim than presence — a check-in says "I am here", an
+  // endorsement says "come now" — so one endorsement outweighs one check-in
+  // (0.34) by a wide margin. It is also gated on an active check-in and capped
+  // at one per venue per hour, so ten of them means ten distinct people in the
+  // room. Unproven against real traffic: revisit after a week of Founding
+  // cohort data before treating these three as tuned.
+  litSignals: 1.6,
+  recentLitSignals: 2.6,
+  litMomentum: 3.4,
 };
 
 export function clamp(value: number, min: number, max: number) {
@@ -134,6 +157,9 @@ export function emptyPartyScore(venueId: string, updatedAt = new Date().toISOStr
       recentRsvpActivity: 0,
       recentEventActivity: 0,
       recentFriendActivity: 0,
+      litSignals: 0,
+      recentLitSignals: 0,
+      litDecayWeight: 0,
     },
     breakdown: {
       baseEnergy: 0,
@@ -165,7 +191,8 @@ export function buildPartyScoreFromSignals({
   const baseEnergy =
     signals.liveCheckins * weights.liveCheckins +
     signals.activeStories * weights.activeStories +
-    signals.storyReactions * weights.storyReactions;
+    signals.storyReactions * weights.storyReactions +
+    signals.litSignals * weights.litSignals;
 
   const socialLift =
     signals.friendPresence * weights.friendPresence +
@@ -182,18 +209,25 @@ export function buildPartyScoreFromSignals({
     signals.recentStories * weights.recentStories +
     signals.recentStoryReactions * weights.recentStoryReactions +
     signals.recentRsvpActivity * weights.recentRsvpActivity +
-    signals.recentEventActivity * weights.recentEventActivity;
+    signals.recentEventActivity * weights.recentEventActivity +
+    signals.recentLitSignals * weights.recentLitSignals;
 
   const rawScore = baseEnergy + socialLift + eventLift + recencyLift;
   const score = Math.round(clamp(rawScore, 0, 100));
   const previousScore = previous?.score ?? score;
   const delta = score - previousScore;
 
+  // Lit enters momentum through `litDecayWeight` and nowhere else. It is
+  // deliberately kept out of `recentActivity` — every other signal increments
+  // that counter, but doing so here would give an endorsement a flat momentum
+  // step that persists unchanged for the whole 45-minute window, which is the
+  // opposite of the decaying behaviour the endorsement is supposed to have.
   const momentumRaw =
     signals.recentActivity * weights.recentActivity +
     signals.recentStories * 2 +
     signals.recentStoryReactions * 1.4 +
     signals.recentFriendActivity * 2.1 +
+    signals.litDecayWeight * weights.litMomentum +
     delta * weights.scoreDeltaMomentum;
 
   const momentum = Math.round(clamp(momentumRaw, -99, 99));

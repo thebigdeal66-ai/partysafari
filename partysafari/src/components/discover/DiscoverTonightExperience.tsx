@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { memo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import StoryRailSurface from "@/components/stories/StoryRailSurface";
 import DiscoverHero from "@/components/discover/DiscoverHero";
 import EventStartingSoonCard from "@/components/discover/EventStartingSoonCard";
@@ -16,6 +16,8 @@ import {
 } from "@/components/discover/DiscoverSection";
 import { describePartyScore } from "@/lib/partyScorePresentation";
 import { useDiscoverTonightData } from "@/hooks/useDiscoverTonightData";
+import { litOutcomeMessage, useVenueLit } from "@/hooks/useVenueLit";
+import { litBoostPoints } from "@/lib/litSignals";
 
 function formatDateLabel(value: string) {
   const parsed = new Date(value);
@@ -51,6 +53,18 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
   const data = useDiscoverTonightData();
   const states = data.sectionStates;
 
+  const hotVenueIds = useMemo(() => data.hotRightNow.map((venue) => venue.id), [data.hotRightNow]);
+  const lit = useVenueLit({ venueIds: hotVenueIds });
+  const [litMessages, setLitMessages] = useState<Record<string, string | null>>({});
+  const submitLit = lit.submitLit;
+  const handleLit = useCallback(
+    async (venueId: string) => {
+      const outcome = await submitLit(venueId);
+      setLitMessages((current) => ({ ...current, [venueId]: litOutcomeMessage(outcome) }));
+    },
+    [submitLit]
+  );
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.15),transparent_24%),linear-gradient(180deg,#05060b_0%,#090510_48%,#06040a_100%)] px-3 py-4 text-white sm:px-6 sm:py-6">
       <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
@@ -84,6 +98,7 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
               {data.hotRightNow.map((venue) => (
                 <VenuePartyCard
                   key={venue.id}
+                  venueId={venue.id}
                   venueHref={`/venues/${venue.slug}`}
                   venueName={venue.name}
                   venueType={venue.venueType}
@@ -98,6 +113,14 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
                   storyCount={venue.storyCount}
                   liveCheckins={venue.liveCheckins}
                   openNow={venue.openNow}
+                  litCount={lit.litByVenueId[venue.id]?.litCount ?? 0}
+                  litHasViewer={lit.litByVenueId[venue.id]?.viewerHasLit ?? false}
+                  litCooldownSeconds={Math.ceil((lit.cooldownMsByVenueId[venue.id] ?? 0) / 1000)}
+                  litBoost={litBoostPoints(lit.litByVenueId[venue.id]?.decayWeight ?? 0)}
+                  litPending={lit.pendingVenueIds.has(venue.id)}
+                  litAvailable={lit.available}
+                  litMessage={litMessages[venue.id] ?? null}
+                  onLit={handleLit}
                 />
               ))}
             </div>

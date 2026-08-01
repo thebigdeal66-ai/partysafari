@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsc -p tsconfig.test.json && node --require ./scripts/test-alias.js --test .test-build"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

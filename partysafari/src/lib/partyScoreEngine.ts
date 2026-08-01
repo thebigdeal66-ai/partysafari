@@ -1,6 +1,8 @@
 import { createSupabaseBrowser, resolveCurrentUserId } from "@/lib/supabaseClient";
 import { buildPartyScoreFromSignals, emptyPartyScore, type PartyScore, type PartyScoreDetails, type PartyScoreSignals } from "@/lib/partyScore";
 import { logSupabaseQueryError, normalizeUnknownError } from "@/lib/supabaseDiagnostics";
+import { fetchVenueLitStates } from "@/lib/litEngine";
+import { emptyLitVenueState } from "@/lib/litSignals";
 
 type SupabaseClientLike = ReturnType<typeof createSupabaseBrowser>;
 
@@ -164,6 +166,9 @@ function createSignalSeed() {
     recentRsvpActivity: 0,
     recentEventActivity: 0,
     recentFriendActivity: 0,
+    litSignals: 0,
+    recentLitSignals: 0,
+    litDecayWeight: 0,
   } as PartyScoreSignals;
 }
 
@@ -280,13 +285,14 @@ export async function calculatePartyScores(venueIdsInput: string[], options: Cal
     const storyIds = (storiesResult.rows || []).map((row) => row.id).filter((value): value is string => typeof value === "string" && value.length > 0);
     const eventIds = (eventsResult.rows || []).map((row) => row.id).filter((value): value is string => typeof value === "string" && value.length > 0);
 
-    const [rsvpSettled, reactionsSettled] = await Promise.allSettled([
+    const [rsvpSettled, reactionsSettled, litSettled] = await Promise.allSettled([
       eventIds.length > 0
         ? selectWithOptionalCreatedAt<EventRsvpRow>(supabase, "event_rsvps", "event_id, user_id, status", (query) => query.in("event_id", eventIds))
         : Promise.resolve({ rows: [] as EventRsvpRow[], hasCreatedAt: true }),
       storyIds.length > 0
         ? selectWithOptionalCreatedAt<StoryReactionRow>(supabase, "story_reactions", "story_id", (query) => query.in("story_id", storyIds))
         : Promise.resolve({ rows: [] as StoryReactionRow[], hasCreatedAt: true }),
+      fetchVenueLitStates(pendingVenueIds, { supabase, recentWindowMinutes }),
     ]);
 
     const rsvpResult = rsvpSettled.status === "fulfilled"
@@ -312,6 +318,22 @@ export async function calculatePartyScores(venueIdsInput: string[], options: Cal
         queryName: "loadStoryReactions",
         query: "select story_id, created_at by story ids",
         error: normalizeUnknownError(reactionsSettled.reason, "Failed to fetch story_reactions for party score."),
+      });
+    }
+
+    // db/020 is not deployed, so the lit view is expected to be missing. `available: false`
+    // means "no lit signal here", never a failure — the engine keeps every other signal.
+    const litResult = litSettled.status === "fulfilled"
+      ? litSettled.value
+      : { statesByVenueId: {} as Record<string, ReturnType<typeof emptyLitVenueState>>, available: false };
+
+    if (litSettled.status === "rejected") {
+      logSupabaseQueryError({
+        scope: "partyScoreEngine.calculatePartyScores",
+        table: "venue_lit_activity",
+        queryName: "loadLitActivity",
+        query: "select venue_id, created_at, expires_at, is_viewer by venue ids",
+        error: normalizeUnknownError(litSettled.reason, "Failed to fetch venue_lit_activity for party score."),
       });
     }
 
@@ -422,6 +444,11 @@ export async function calculatePartyScores(venueIdsInput: string[], options: Cal
       const signals = signalsByVenue.get(venueId) || createSignalSeed();
       signals.friendPresence = friendPresenceSets.get(venueId)?.size || 0;
 
+      const litState = litResult.statesByVenueId[venueId] || emptyLitVenueState(venueId);
+      signals.litSignals = litState.litCount;
+      signals.recentLitSignals = litState.recentLitCount;
+      signals.litDecayWeight = litState.decayWeight;
+
       const placeholders = Array.from(ensurePlaceholderSet(venueId));
       const availableSources = [
         true,
@@ -442,13 +469,19 @@ export async function calculatePartyScores(venueIdsInput: string[], options: Cal
         signals.recentActivity > 0,
       ].filter(Boolean).length;
       const confidence = 0.35 + (availableSources / 7) * 0.4 + (activeSources / 7) * 0.25;
+
+      // Reported after `confidence` is computed, never before. `availableSources` reads
+      // `placeholders.length === 0`, so folding the lit placeholder in above would drop
+      // every venue's confidence for as long as db/020 stays undeployed — a regression
+      // caused by adding a signal, which is exactly what the additive rule forbids.
+      const publishedPlaceholders = litResult.available ? placeholders : [...placeholders, "lit signals"];
       const previous = getCachedPartyScore(venueId) as PartyScore | null;
       const score = buildPartyScoreFromSignals({
         venueId,
         signals,
         confidence,
         updatedAt: nowIso,
-        placeholders,
+        placeholders: publishedPlaceholders,
         previous,
       });
       results[venueId] = score;

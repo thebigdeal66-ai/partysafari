@@ -7,6 +7,8 @@ import VenuePartyCard from "@/components/discover/VenuePartyCard";
 import { usePartyScores } from "@/hooks/usePartyScore";
 import { useLiveVenueMetrics } from "@/hooks/useLiveVenueMetrics";
 import { useVisibleVenueIds } from "@/hooks/useVisibleVenueIds";
+import { litOutcomeMessage, useVenueLit } from "@/hooks/useVenueLit";
+import { litBoostPoints } from "@/lib/litSignals";
 
 type VenueSummary = {
   id: string;
@@ -94,6 +96,17 @@ export default function LivePartyModeBoard() {
 
   const topVenues = venuesWithMetrics.slice(0, 12);
 
+  const lit = useVenueLit({ venueIds, enabled: venueIds.length > 0 });
+  const [litMessages, setLitMessages] = useState<Record<string, string | null>>({});
+  const submitLit = lit.submitLit;
+  const handleLit = useCallback(
+    async (venueId: string) => {
+      const outcome = await submitLit(venueId);
+      setLitMessages((current) => ({ ...current, [venueId]: litOutcomeMessage(outcome) }));
+    },
+    [submitLit]
+  );
+
   const setCardRef = useCallback(
     (venueId: string) => (node: HTMLDivElement | null) => {
       registerVenueNode(venueId, node);
@@ -128,6 +141,7 @@ export default function LivePartyModeBoard() {
               className="[content-visibility:auto]"
             >
               <VenuePartyCard
+                venueId={venue.id}
                 venueHref={`/venues/${venue.slug}`}
                 venueName={venue.name}
                 venueType={venue.venueType}
@@ -143,6 +157,14 @@ export default function LivePartyModeBoard() {
                 liveCheckins={metrics?.liveCheckins || 0}
                 openNow={true}
                 onJoinLabel="View Venue"
+                litCount={lit.litByVenueId[venue.id]?.litCount ?? 0}
+                litHasViewer={lit.litByVenueId[venue.id]?.viewerHasLit ?? false}
+                litCooldownSeconds={Math.ceil((lit.cooldownMsByVenueId[venue.id] ?? 0) / 1000)}
+                litBoost={litBoostPoints(lit.litByVenueId[venue.id]?.decayWeight ?? 0)}
+                litPending={lit.pendingVenueIds.has(venue.id)}
+                litAvailable={lit.available}
+                litMessage={litMessages[venue.id] ?? null}
+                onLit={handleLit}
               />
             </div>
           );

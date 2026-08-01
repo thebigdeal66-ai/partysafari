@@ -17,6 +17,13 @@ const eslintConfig = defineConfig([
       "prefer-const": "warn",
     },
   },
+  {
+    // Node CommonJS tooling, not bundled app code.
+    files: ["scripts/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -24,6 +31,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Compiled output of `npm test`.
+    ".test-build/**",
   ]),
 ]);
 
