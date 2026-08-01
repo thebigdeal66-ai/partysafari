@@ -146,7 +146,9 @@ export type DiscoverIntelligenceConfig = {
    * directly to the shared thresholds, and the label on screen means exactly
    * what it already means everywhere else. `gettingBusyMinMomentum` is the only
    * thing added on top, and only to keep a stalled mid-size room off a card
-   * that promises movement.
+   * that promises movement. It is paired with a `trend !== "down"` check in
+   * `matchCategory` so a room that clears the momentum floor on inflow alone
+   * while its score falls does not get told it is "still rising".
    */
   gettingBusyMinCheckins: number;
   gettingBusyMaxCheckins: number;
@@ -413,7 +415,7 @@ function matchCategory(
   venue: DiscoverIntelligenceVenue,
   config: DiscoverIntelligenceConfig
 ): string | null {
-  const { score, momentum, signals } = venue.partyScore;
+  const { score, momentum, trend, signals } = venue.partyScore;
   const distance = finiteDistance(venue.distanceMiles);
 
   switch (category) {
@@ -438,9 +440,17 @@ function matchCategory(
     }
 
     case "gettingBusy":
+      // `trend` is checked on top of the momentum floor because momentum sums
+      // recent inflow *and* the score delta: a room can post enough new
+      // check-ins to clear +4 while its score is actually falling, which the
+      // engine reports as trend "down". The sentence below says "still rising",
+      // so the falling case has to be excluded or the card overclaims. The same
+      // guard on `explodingRightNow` would be dead code — its +12 floor is above
+      // the engine's own +8 "up" bar, so that trend is already always "up".
       return signals.liveCheckins >= config.gettingBusyMinCheckins &&
         signals.liveCheckins <= config.gettingBusyMaxCheckins &&
-        momentum >= config.gettingBusyMinMomentum
+        momentum >= config.gettingBusyMinMomentum &&
+        trend !== "down"
         ? `${signals.liveCheckins} checked in — inside the Getting Busy range of ${config.gettingBusyMinCheckins}–${config.gettingBusyMaxCheckins}, and still rising.`
         : null;
 

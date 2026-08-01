@@ -157,6 +157,31 @@ test("Getting Busy uses the shared crowd thresholds rather than its own band", (
   assert.equal(categoryOf(rising), "gettingBusy");
 });
 
+test("a flat room inside the Getting Busy crowd band is not called Getting Busy", () => {
+  // Right number of people, but nobody new arrived and the score did not move,
+  // so the card that promises movement must not claim it.
+  const flat = venue("flat-band", { signals: { liveCheckins: 20 } });
+
+  assert.ok(flat.partyScore.signals.liveCheckins >= CROWD_THRESHOLDS.gettingBusy.min);
+  assert.ok(flat.partyScore.signals.liveCheckins <= CROWD_THRESHOLDS.gettingBusy.max);
+  assert.equal(flat.partyScore.momentum, 0);
+  assert.notEqual(categoryOf(flat), "gettingBusy");
+});
+
+test("a room whose score is falling is not called Getting Busy on inflow alone", () => {
+  // Momentum sums recent inflow and the score delta, so seven recent events can
+  // hold momentum at the +4 floor while the score drops four points. The engine
+  // calls that trend "down"; the card says "still rising", so it must not match.
+  const declining = venue("declining", {
+    signals: { liveCheckins: 20, recentActivity: 7 },
+    previousScore: 26,
+  });
+
+  assert.equal(declining.partyScore.momentum, DISCOVER_INTELLIGENCE_CONFIG.gettingBusyMinMomentum);
+  assert.equal(declining.partyScore.trend, "down");
+  assert.notEqual(categoryOf(declining), "gettingBusy");
+});
+
 test("a crowd below the shared Getting Busy floor is not called Getting Busy", () => {
   const belowFloor = venue("thin", {
     signals: { liveCheckins: CROWD_THRESHOLDS.gettingBusy.min - 1, recentCheckins: 5, recentActivity: 5 },
@@ -177,6 +202,18 @@ test("Friends Are Here counts the engine's friendPresence signal, not a separate
   const subject = venue("friends-many", { signals: { friendPresence: 3, liveCheckins: 12 } });
 
   assert.match(classifyVenue(subject)!.categoryReason, /3 friends are checked in/);
+});
+
+test("Friends Are Here is never inferred from an otherwise busy room", () => {
+  // Everything a room can have except a friend in it.
+  const noFriends = venue("no-friends", {
+    signals: { liveCheckins: 30, activeStories: 3, storyReactions: 20, activeEvents: 1, litSignals: 6 },
+    distanceMiles: 1,
+    liveEventTypes: ["dj"],
+  });
+
+  assert.equal(noFriends.partyScore.signals.friendPresence, 0);
+  assert.notEqual(categoryOf(noFriends), "friendsAreHere");
 });
 
 test("Live Music Nearby needs a real music event type", () => {
@@ -248,9 +285,89 @@ test("Worth Driving To needs real distance, and enough score to justify the trip
   assert.notEqual(categoryOf(closeBy), "worthDrivingTo");
 });
 
+test("distance alone is not Worth Driving To — the score floor is required too", () => {
+  const farButMediocre = venue("far-weak", {
+    signals: { liveCheckins: 12, storyReactions: 4 },
+    distanceMiles: 8,
+  });
+
+  assert.ok(farButMediocre.distanceMiles! >= DISCOVER_INTELLIGENCE_CONFIG.worthDrivingMinMiles);
+  assert.ok(farButMediocre.partyScore.score < DISCOVER_INTELLIGENCE_CONFIG.worthDrivingMinScore);
+  assert.notEqual(categoryOf(farButMediocre), "worthDrivingTo");
+});
+
+test("a venue with almost no data behind it never becomes a Hidden Gem", () => {
+  // One endorsement and nothing else clears the "somebody vouched" gate but
+  // comes nowhere near the score floor, which is what keeps a blank venue off
+  // the card rather than its emptiness reading as undiscovered quality.
+  const bare = venue("bare", { signals: { litSignals: 1 } });
+
+  assert.ok(bare.partyScore.signals.litSignals > 0);
+  assert.ok(bare.partyScore.score < DISCOVER_INTELLIGENCE_CONFIG.hiddenGemMinScore);
+  assert.equal(categoryOf(bare), null);
+});
+
 // ---------------------------------------------------------------------------
 // Precedence and exclusivity
 // ---------------------------------------------------------------------------
+
+test("precedence resolves in the documented order, strongest classification first", () => {
+  assert.deepEqual(DISCOVER_INTELLIGENCE_CONFIG.categoryPrecedence, [
+    "explodingRightNow",
+    "friendsAreHere",
+    "liveMusicNearby",
+    "gettingBusy",
+    "hiddenGem",
+    "worthDrivingTo",
+  ]);
+});
+
+/**
+ * Which categories a venue satisfies *independently*, found by running the real
+ * classifier against a one-entry precedence list per category. That is the same
+ * rule code the full classifier uses, so it cannot drift from it.
+ */
+function allMatchingCategories(input: DiscoverIntelligenceVenue): DiscoverCardCategory[] {
+  return DISCOVER_INTELLIGENCE_CONFIG.categoryPrecedence.filter(
+    (category) =>
+      classifyVenue(input, { ...DISCOVER_INTELLIGENCE_CONFIG, categoryPrecedence: [category] }) !== null
+  );
+}
+
+test("when several rules match, the winner is always the earliest in the precedence order", () => {
+  const contenders = [
+    // Exploding + friends + live music + in the Getting Busy band, all at once.
+    venue("multi-a", {
+      signals: { liveCheckins: 20, activeStories: 2, activeEvents: 1, friendPresence: 2, recentActivity: 6, litSignals: 4 },
+      previousScore: 0,
+      distanceMiles: 4,
+      liveEventTypes: ["band"],
+    }),
+    // Live music and a drive-worthy score, no friends.
+    venue("multi-b", {
+      signals: { liveCheckins: 45, activeStories: 2, storyReactions: 20, activeEvents: 1 },
+      distanceMiles: 6,
+      liveEventTypes: ["dj"],
+    }),
+    // Hidden Gem and Worth Driving To together.
+    venue("multi-c", {
+      signals: { liveCheckins: 8, litSignals: 10, storyReactions: 20, activeStories: 1 },
+      distanceMiles: 7,
+    }),
+    // Getting Busy and Hidden Gem together.
+    venue("multi-d", {
+      signals: { liveCheckins: 18, litSignals: 8, storyReactions: 14, recentActivity: 6 },
+      previousScore: 0,
+    }),
+  ];
+
+  for (const subject of contenders) {
+    const matches = allMatchingCategories(subject);
+    assert.ok(matches.length > 1, `${subject.id} should match more than one rule`);
+    // `matches` is already in precedence order, so its head is the expected winner.
+    assert.equal(categoryOf(subject), matches[0], `${subject.id} matched ${matches.join(", ")}`);
+  }
+});
 
 test("a venue appears on exactly one card even when several rules match", () => {
   // Exploding, friends present, live music, all at once.
@@ -459,6 +576,131 @@ test("an empty card explains itself instead of vanishing", () => {
   for (const card of cards) {
     assert.equal(card.venues.length, 0);
     assert.ok(card.emptyMessage && card.emptyMessage.length > 0, `${card.id} needs an empty message`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Claim safety
+// ---------------------------------------------------------------------------
+
+/** Forward-looking phrasing. No prediction model exists, so none of it may ship. */
+const PREDICTIVE_PHRASING =
+  /\b(will|going to|about to|expected|predict\w*|forecast\w*|likely|should be|any minute|due to)\b/i;
+
+test("no card string claims anything about the future", () => {
+  const population = [
+    explodingVenue("a", { friendPresence: 2 }),
+    venue("b", { signals: { liveCheckins: 20, recentCheckins: 6, recentActivity: 6 }, previousScore: 0 }),
+    venue("c", { signals: { liveCheckins: 8, litSignals: 8, storyReactions: 16 } }),
+    venue("d", { signals: { activeEvents: 1, liveCheckins: 6 }, distanceMiles: 2, liveEventTypes: ["band"], liveMusicTitle: "Night Shift" }),
+    venue("e", { signals: { liveCheckins: 45, activeStories: 2, storyReactions: 20 }, distanceMiles: 8 }),
+    venue("f", {}),
+  ];
+
+  const { cards, unclassified } = buildDiscoverCards(population);
+  const strings: string[] = [];
+
+  for (const card of cards) {
+    strings.push(card.label, card.description);
+    if (card.emptyMessage) {
+      strings.push(card.emptyMessage);
+    }
+    for (const entry of card.venues) {
+      strings.push(entry.categoryReason, entry.explanation.headline);
+      if (entry.dataNote) {
+        strings.push(entry.dataNote);
+      }
+      for (const reason of entry.explanation.reasons) {
+        strings.push(reason.text);
+      }
+    }
+  }
+  for (const entry of unclassified) {
+    strings.push(entry.message);
+  }
+
+  assert.ok(strings.length > 0, "expected some copy to check");
+  for (const value of strings) {
+    assert.doesNotMatch(value, PREDICTIVE_PHRASING, `predictive phrasing in: ${value}`);
+  }
+});
+
+test("every category reason quotes a signal value the venue actually has", () => {
+  // The reason sentence is the one string this module writes itself, so it is
+  // the one that could drift into a claim no row supports.
+  const friends = classifyVenue(venue("f", { signals: { friendPresence: 2, liveCheckins: 5 } }))!;
+  assert.match(friends.categoryReason, /^2 friends are checked in here right now\.$/);
+
+  const music = classifyVenue(
+    venue("m", { signals: { activeEvents: 1, liveCheckins: 6 }, distanceMiles: 2.4, liveEventTypes: ["dj"] })
+  )!;
+  // No performer name supplied, so it does not invent one.
+  assert.match(music.categoryReason, /^Live music is on now, 2\.4 miles away\.$/);
+});
+
+// ---------------------------------------------------------------------------
+// Low-data production shape
+// ---------------------------------------------------------------------------
+
+test("a production-shaped low-data night renders fewer than six cards' worth, and forces nothing", () => {
+  // Four venues, barely any check-ins, no friends, no Lit, no events, no
+  // distance — roughly what the Founding cohort looks like on a slow night.
+  const population = [
+    venue("v1", { signals: { liveCheckins: 2 }, confidence: 0.4 }),
+    venue("v2", { signals: { liveCheckins: 1, activeStories: 1 }, confidence: 0.4 }),
+    venue("v3", {}),
+    venue("v4", { signals: { liveCheckins: 3 }, confidence: 0.45 }),
+  ];
+
+  const { cards, unclassified } = buildDiscoverCards(population);
+
+  // All six cards still render so the layout holds…
+  assert.equal(cards.length, 6);
+  // …but nothing was promoted onto any of them.
+  const placed = cards.flatMap((card) => card.venues);
+  assert.equal(placed.length, 0);
+
+  // Nothing is called Exploding or Getting Busy without the signal to back it.
+  for (const card of cards) {
+    assert.equal(card.venues.length, 0, `${card.id} should be empty on a low-data night`);
+    assert.ok(card.emptyMessage, `${card.id} needs qualitative empty copy, not silence`);
+    assert.doesNotMatch(card.emptyMessage!, PREDICTIVE_PHRASING);
+  }
+
+  // Every venue still gets a sentence rather than being dropped or zeroed.
+  assert.equal(unclassified.length, 4);
+  for (const entry of unclassified) {
+    assert.ok(entry.message.trim().length > 0);
+    assert.doesNotMatch(entry.message, /^0\b/);
+    assert.doesNotMatch(entry.message, PREDICTIVE_PHRASING);
+  }
+});
+
+test("a thin night is not padded up to six recommendations", () => {
+  // One venue genuinely qualifies. The other five cards stay empty rather than
+  // borrowing it or reaching down for weaker venues to fill themselves.
+  const population = [
+    venue("only-real", { signals: { friendPresence: 1, liveCheckins: 6 } }),
+    venue("weak-1", { signals: { liveCheckins: 2 } }),
+    venue("weak-2", {}),
+  ];
+
+  const { cards } = buildDiscoverCards(population);
+  const populatedCards = cards.filter((card) => card.venues.length > 0);
+
+  assert.equal(populatedCards.length, 1);
+  assert.equal(populatedCards[0].id, "friendsAreHere");
+  assert.deepEqual(populatedCards[0].venues.map((entry) => entry.venueId), ["only-real"]);
+});
+
+test("a night with no venues at all degrades to copy rather than silence", () => {
+  const { cards, unclassified, crowdPulseAvailable } = buildDiscoverCards([]);
+
+  assert.equal(unclassified.length, 0);
+  assert.equal(crowdPulseAvailable, false);
+  assert.equal(cards.length, 6);
+  for (const card of cards) {
+    assert.ok(card.emptyMessage && card.emptyMessage.trim().length > 0);
   }
 });
 
