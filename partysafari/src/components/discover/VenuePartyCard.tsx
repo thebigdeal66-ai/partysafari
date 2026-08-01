@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { DEFAULT_PARTY_SCORE, type PartyScore } from "@/lib/partyScore";
 import { describePartyScore, formatScoreUpdatedLabel } from "@/lib/partyScorePresentation";
 import { getCrowdLevelColorClass, getCrowdLevelEmoji } from "@/lib/venueCheckInUtils";
+import LitButton from "@/components/discover/LitButton";
 
 type AnimatedValueProps = {
   value: number;
@@ -13,6 +14,8 @@ type AnimatedValueProps = {
 };
 
 type VenuePartyCardProps = {
+  /** Needed for the Lit write. Optional so the card still renders where lit is not wired. */
+  venueId?: string;
   venueHref: string;
   venueName: string;
   venueType: string | null;
@@ -28,6 +31,22 @@ type VenuePartyCardProps = {
   liveCheckins: number;
   openNow: boolean;
   onJoinLabel?: string;
+  /** Active endorsements at this venue right now. */
+  litCount?: number;
+  /** Whether the signed-in user holds a live endorsement here. */
+  litHasViewer?: boolean;
+  /** Seconds until this user may endorse again. */
+  litCooldownSeconds?: number;
+  /** Momentum points the current endorsements are contributing. Decays; not part of the base score. */
+  litBoost?: number;
+  litPending?: boolean;
+  /** False when db/020 is undeployed — the button is hidden rather than offered and refused. */
+  litAvailable?: boolean;
+  /** False when the viewer has no recent check-in here, is cooling down, or is over the nightly ceiling. */
+  litEligible?: boolean;
+  /** Why the button is locked, rendered beneath it so the lock is never silent. */
+  litMessage?: string | null;
+  onLit?: (venueId: string) => void | Promise<unknown>;
 };
 
 function AnimatedValue({ value, suffix = "", className = "" }: AnimatedValueProps) {
@@ -104,6 +123,7 @@ function StatTile({ label, value }: { label: string; value: number }) {
 }
 
 export default function VenuePartyCard({
+  venueId,
   venueHref,
   venueName,
   venueType,
@@ -119,6 +139,15 @@ export default function VenuePartyCard({
   liveCheckins,
   openNow,
   onJoinLabel = "Join Party",
+  litCount = 0,
+  litHasViewer = false,
+  litCooldownSeconds = 0,
+  litBoost = 0,
+  litPending = false,
+  litAvailable = false,
+  litEligible = false,
+  litMessage = null,
+  onLit,
 }: VenuePartyCardProps) {
   const score = describePartyScore(partyScore ?? DEFAULT_PARTY_SCORE, {
     liveCheckins,
@@ -186,6 +215,13 @@ export default function VenuePartyCard({
           ) : null}
           <Chip>{distanceLabel}</Chip>
           {score.showConfidence ? <Chip>Early read · {score.confidencePercent}% confidence</Chip> : null}
+          {/* Temporary and separate from the Party Score above: this is what the live
+              endorsements are adding to momentum right now, and it decays away on its own. */}
+          {litAvailable && litBoost > 0 ? (
+            <Chip tone="up">
+              <span aria-hidden="true">🔥</span>+<AnimatedValue value={litBoost} /> lit boost · fading
+            </Chip>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -207,6 +243,18 @@ export default function VenuePartyCard({
 
         <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-1">
           <p className="text-xs text-white/45">{updatedLabel ? `Updated ${updatedLabel}` : "Waiting on first signal"}</p>
+          {litAvailable && venueId ? (
+            <LitButton
+              venueId={venueId}
+              litCount={litCount}
+              hasLit={litHasViewer}
+              cooldownSecondsRemaining={litCooldownSeconds}
+              pending={litPending}
+              disabled={!litEligible}
+              message={litMessage}
+              onLit={onLit}
+            />
+          ) : null}
           <Link
             href={venueHref}
             className="inline-flex min-h-11 items-center rounded-full border border-violet-300/35 bg-violet-500/15 px-5 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25"
