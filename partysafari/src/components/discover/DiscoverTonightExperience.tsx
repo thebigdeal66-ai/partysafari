@@ -7,6 +7,7 @@ import DiscoverHero from "@/components/discover/DiscoverHero";
 import EventStartingSoonCard from "@/components/discover/EventStartingSoonCard";
 import VenuePartyCard from "@/components/discover/VenuePartyCard";
 import WhyThisVenue from "@/components/discover/WhyThisVenue";
+import AiDiscoverCards from "@/components/discover/AiDiscoverCards";
 import {
   CardSkeleton,
   EmptyState,
@@ -16,6 +17,7 @@ import {
   SectionShell,
 } from "@/components/discover/DiscoverSection";
 import { describePartyScore } from "@/lib/partyScorePresentation";
+import { useAiDiscoverCards } from "@/hooks/useAiDiscoverCards";
 import { useDiscoverTonightData } from "@/hooks/useDiscoverTonightData";
 import { useVenueLit } from "@/hooks/useVenueLit";
 import { litBoostPoints } from "@/lib/litSignals";
@@ -56,6 +58,7 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
 
   const hotVenueIds = useMemo(() => data.hotRightNow.map((venue) => venue.id), [data.hotRightNow]);
   const lit = useVenueLit({ venueIds: hotVenueIds });
+  const aiCards = useAiDiscoverCards(data.venueCards);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.15),transparent_24%),linear-gradient(180deg,#05060b_0%,#090510_48%,#06040a_100%)] px-3 py-4 text-white sm:px-6 sm:py-6">
@@ -67,6 +70,13 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
           trendingVenues={data.trendingVenues}
           updatedLabel={data.updatedLabel}
         />
+
+        {aiCards.enabled ? (
+          <AiDiscoverCards
+            cards={aiCards.result.cards}
+            crowdPulseAvailable={aiCards.result.crowdPulseAvailable}
+          />
+        ) : null}
 
         <SectionShell
           eyebrow="🔥 Hot Right Now"

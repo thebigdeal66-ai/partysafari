@@ -15,7 +15,7 @@
  * out rather than composed from the flag name.
  */
 
-export type FeatureFlag = "crowdPulse";
+export type FeatureFlag = "crowdPulse" | "aiDiscoverCards";
 
 export const FEATURE_FLAG_DEFAULTS: Readonly<Record<FeatureFlag, boolean>> = {
   /**
@@ -29,12 +29,28 @@ export const FEATURE_FLAG_DEFAULTS: Readonly<Record<FeatureFlag, boolean>> = {
    * same pass that calibrates `CROWD_PULSE_CONFIG.intensityReference`.
    */
   crowdPulse: false,
+
+  /**
+   * AI Discover Cards ship dark. The classification and priority model in
+   * `discoverIntelligence.ts` is pure and tested, but its thresholds have never
+   * been checked against a real Ocean City night — a card that claims a room is
+   * "Exploding Right Now" when it is not is exactly the kind of confidence lie
+   * MASTERPLAN forbids. Flip this only after those thresholds are validated
+   * against observed traffic.
+   *
+   * Independent of `crowdPulse`. The cards treat Crowd Pulse as optional
+   * corroboration, so this flag can be turned on first without turning that one
+   * on, and turning that one on later changes only priority ordering.
+   */
+  aiDiscoverCards: false,
 };
 
 function readFlagEnv(flag: FeatureFlag): string | undefined {
   switch (flag) {
     case "crowdPulse":
       return process.env.NEXT_PUBLIC_FEATURE_CROWD_PULSE;
+    case "aiDiscoverCards":
+      return process.env.NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS;
   }
 }
 
