@@ -43,6 +43,14 @@ import type {
  * are the entire surface.
  *
  * **No writes.** Every call here is a `select`.
+ *
+ * **The flag is a hard gate, not a default.** `buckets[].level` and
+ * `summary.peakLevel` are provisional absolute labels resting on an
+ * uncalibrated reference constant (see `CROWD_PULSE_CONFIG.intensityReference`),
+ * so while `crowdPulse` is off this hook fetches nothing and returns
+ * `emptyCrowdPulse` regardless of what a caller passes for `enabled`. There is
+ * no way to reach a real reading from a surface without flipping the flag at
+ * deploy time.
  */
 
 /** Long enough that a screen full of consumers costs one round trip, short enough to still read as "now". */
@@ -58,7 +66,12 @@ export type CrowdPulseCityScope = {
 
 export type UseCrowdPulseOptions = {
   scope: CrowdPulseCityScope | null;
-  /** Defaults to the `crowdPulse` feature flag, which is off. */
+  /**
+   * Narrows the `crowdPulse` flag; it cannot widen it. With the flag off — its
+   * default — the hook stays dark whatever a caller passes, so a provisional
+   * level label cannot reach a surface by way of a prop. Defaults to true, i.e.
+   * "as enabled as the flag allows".
+   */
   enabled?: boolean;
   /** Off by default. Set only on a surface that is actually rendering the pulse. */
   pollIntervalMs?: number;
@@ -343,7 +356,7 @@ async function loadCrowdPulseRead(
 export function useCrowdPulse(options: UseCrowdPulseOptions): UseCrowdPulseResult {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const flagEnabled = isFeatureEnabled("crowdPulse");
-  const enabled = (options.enabled ?? flagEnabled) === true;
+  const enabled = flagEnabled && (options.enabled ?? true) === true;
   const pollIntervalMs = options.pollIntervalMs ?? 0;
 
   // Callers rebuild the scope object every render; keying the memo on its

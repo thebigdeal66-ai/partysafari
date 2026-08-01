@@ -49,10 +49,15 @@ export type CrowdPulseConfig = {
    */
   binSizeDegrees: number;
   /**
-   * Distinct contributors a cell needs before it publishes anything. Three is
+   * Distinct contributors a *cell* needs before it publishes anything. Three is
    * the smallest number at which "who was in that cell" stops being a guess
    * with even odds. Expect to raise it once real venue density is observed —
    * the rollout plan tunes this constant rather than the code.
+   *
+   * It is a floor on the cell, and deliberately not a second floor on each
+   * venue inside it: Crowd Pulse reports how busy an area is, not how busy any
+   * one business is, so three people spread across the venues on a block is a
+   * legitimate read of that block.
    */
   minContributors: number;
   /**
@@ -89,18 +94,45 @@ export type CrowdPulseConfig = {
    */
   trendMinIntensity: number;
   /**
-   * Weighted points that read as fully saturated. Forty is about one running
-   * event, three live stories and a dozen fresh check-ins in one cell — a place
-   * nobody would describe as anything but packed. Normalising against a fixed
-   * reference rather than the hottest cell of the moment means a quiet city
-   * looks quiet instead of having its least-quiet block promoted to 1.0.
+   * Weighted points that read as fully saturated.
+   *
+   * **Provisional beta calibration constant — not yet calibrated against real
+   * production nightlife data.** The current value is an analytical estimate
+   * (roughly one running event, three live stories and a dozen fresh check-ins
+   * in one cell), not a figure measured from observed traffic. Read that as a
+   * placeholder with a plausible magnitude, not as a validated threshold.
+   *
+   * What this does and does not compromise:
+   *
+   * - **Relative ordering and trend are trustworthy now.** `intensityReference`
+   *   is a single positive divisor applied identically to every cell, so it
+   *   cannot reorder them; and `trend` is a two-window comparison of undecayed
+   *   weights that never touches this constant at all. Which block is hottest,
+   *   and which way it is moving, are usable before calibration.
+   * - **Absolute labels are provisional.** `intensity` and the `CrowdPulseLevel`
+   *   it resolves to (`quiet` / `building` / `busy` / `peak`) are only as
+   *   meaningful as this divisor. Until it is calibrated, treat any absolute
+   *   claim — "this cell is busy" — as unverified, and do not put one in front
+   *   of a user as fact.
+   *
+   * Tuning it is a prerequisite for public rollout: collect observed Ocean City
+   * activity with the `crowdPulse` flag still off, take the weighted total that
+   * genuinely corresponds to a packed cell, and set this to that. Normalising
+   * against a fixed reference rather than the hottest cell of the moment is
+   * itself deliberate — an adaptive percentile would make a quiet city's
+   * least-quiet block read as `peak`, which is a worse failure than an
+   * uncalibrated scale.
    */
   intensityReference: number;
-  /** Upper bound of `quiet`. Signals present, nothing you would cross town for. */
+  /**
+   * Upper bound of `quiet`. Signals present, nothing you would cross town for.
+   * Provisional along with `intensityReference`: these ceilings sit on the
+   * normalised scale that constant defines, so they inherit its uncertainty.
+   */
   quietCeiling: number;
-  /** Upper bound of `building`. */
+  /** Upper bound of `building`. Provisional — see `intensityReference`. */
   buildingCeiling: number;
-  /** Upper bound of `busy`; at or above it a cell is `peak`. */
+  /** Upper bound of `busy`; at or above it a cell is `peak`. Provisional — see `intensityReference`. */
   busyCeiling: number;
   /**
    * Most cells returned. Orientation is the point (MASTERPLAN: "the second is
@@ -122,6 +154,17 @@ export type CrowdPulseConfig = {
   weightKeys: Readonly<Record<CrowdPulseCountKey, keyof PartyScoreWeights>>;
 };
 
+/**
+ * Beta calibration status, as of this commit:
+ *
+ * `intensityReference` — and therefore `intensity` and every absolute level
+ * label derived from it — is **provisional and uncalibrated**. It has never
+ * been checked against real production nightlife data. Relative ordering
+ * between cells and the `trend` direction are unaffected and can be relied on;
+ * "this cell is `busy`" cannot, until the constant is tuned against observed
+ * Ocean City activity. That tuning is a gate on public rollout, which is why
+ * the `crowdPulse` feature flag ships off. See the field docs above.
+ */
 export const CROWD_PULSE_CONFIG: CrowdPulseConfig = {
   binSizeDegrees: 0.005,
   minContributors: 3,
@@ -130,6 +173,8 @@ export const CROWD_PULSE_CONFIG: CrowdPulseConfig = {
   trendWindowMinutes: 20,
   trendChangeRatio: 0.2,
   trendMinIntensity: 1,
+  // PROVISIONAL BETA CALIBRATION CONSTANT. Estimated, not measured. Retune from
+  // observed Ocean City activity before any public rollout.
   intensityReference: 40,
   quietCeiling: 0.2,
   buildingCeiling: 0.45,

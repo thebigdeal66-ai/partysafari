@@ -22,6 +22,11 @@ export const FEATURE_FLAG_DEFAULTS: Readonly<Record<FeatureFlag, boolean>> = {
    * Crowd Pulse ships dark. The engine and its hook are complete and tested;
    * nothing renders. Flip this only after the Founder-cohort ground-truth pass
    * described in the rollout plan.
+   *
+   * This flag is also what keeps the engine's provisional absolute labels
+   * (`quiet` / `building` / `busy` / `peak`) away from users: they rest on an
+   * uncalibrated reference constant, so the pass that flips this flag is the
+   * same pass that calibrates `CROWD_PULSE_CONFIG.intensityReference`.
    */
   crowdPulse: false,
 };

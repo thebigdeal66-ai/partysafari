@@ -33,7 +33,15 @@ export type CrowdPulseCountKey = CrowdPulseSignalKind | "lit";
 
 export type CrowdPulseTrend = "rising" | "flat" | "falling";
 
-/** `no-signal` is the below-the-floor state, never "zero people here". */
+/**
+ * `no-signal` is the below-the-floor state, never "zero people here".
+ *
+ * The other four are **provisional** absolute labels: they come from thresholds
+ * on a scale whose reference point (`CROWD_PULSE_CONFIG.intensityReference`) is
+ * an uncalibrated beta estimate. Ranking cells against each other is sound;
+ * asserting that a cell is `busy` is not, until that constant is tuned against
+ * observed activity.
+ */
 export type CrowdPulseLevel = "no-signal" | "quiet" | "building" | "busy" | "peak";
 
 export type CrowdPulseCoordinate = {
@@ -90,7 +98,11 @@ export type CrowdPulseBucket = {
   label: string;
   /** Cell centre, for map rendering. Not a venue position and not a person's. */
   center: CrowdPulseCoordinate;
-  /** Normalised 0–1 heat. Zero whenever `contributorFloorMet` is false. */
+  /**
+   * Normalised 0–1 heat. Zero whenever `contributorFloorMet` is false. The
+   * scale is provisional — see `CrowdPulseLevel` — so compare it across cells
+   * rather than reading a single value as an absolute measure.
+   */
   intensity: number;
   /** Decayed, Party-Score-weighted signal total behind `intensity`. */
   weightedIntensity: number;
