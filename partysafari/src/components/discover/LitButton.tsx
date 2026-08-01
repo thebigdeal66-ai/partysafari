@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { formatCooldownLabel } from "@/lib/litSignals";
 
 /**
@@ -30,6 +30,7 @@ export type LitButtonProps = {
   pending?: boolean;
   /** Refusal to show beside the button — cooldown, ineligibility, sign-in. */
   message?: string | null;
+  /** Locked for a reason the cooldown countdown does not cover: no recent check-in, nightly ceiling, signed out. */
   disabled?: boolean;
   className?: string;
 };
@@ -50,6 +51,7 @@ export default function LitButton({
   const [flare, setFlare] = useState(false);
   const flareTimerRef = useRef<number | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const messageId = useId();
 
   useEffect(() => {
     return () => {
@@ -96,6 +98,9 @@ export default function LitButton({
         onClick={handleClick}
         disabled={blocked}
         aria-pressed={hasLit}
+        // The reason the button is locked sits in a sibling span. Pointing at it
+        // keeps a disabled button from reading as an unexplained dead control.
+        aria-describedby={message ? messageId : undefined}
         aria-label={
           hasLit
             ? `You marked this venue lit. ${litCount} active right now.`
@@ -118,7 +123,11 @@ export default function LitButton({
         <span>{pending ? "…" : label}</span>
         <span className="tabular-nums text-white/70">{litCount}</span>
       </button>
-      {message ? <span className="px-1 text-[11px] leading-tight text-white/50">{message}</span> : null}
+      {message ? (
+        <span id={messageId} className="px-1 text-[11px] leading-tight text-white/50">
+          {message}
+        </span>
+      ) : null}
     </div>
   );
 }

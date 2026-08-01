@@ -120,10 +120,11 @@ export const DEFAULT_PARTY_SCORE_WEIGHTS: PartyScoreWeights = {
   scoreDeltaMomentum: 2.6,
   // Lit is a stronger claim than presence — a check-in says "I am here", an
   // endorsement says "come now" — so one endorsement outweighs one check-in
-  // (0.34) by a wide margin. It is also gated on an active check-in and capped
-  // at one per venue per hour, so ten of them means ten distinct people in the
-  // room. Unproven against real traffic: revisit after a week of Founding
-  // cohort data before treating these three as tuned.
+  // (0.34) by a wide margin. It is also gated on a check-in from the last 90
+  // minutes and capped at one per venue per hour, so ten of them means ten
+  // distinct people who were recently in the room. Unproven against real
+  // traffic: revisit after a week of Founding cohort data before treating
+  // these three as tuned.
   litSignals: 1.6,
   recentLitSignals: 2.6,
   litMomentum: 3.4,

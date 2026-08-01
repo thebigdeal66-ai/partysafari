@@ -2,8 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
-import { fetchVenueLitStates, invalidateLitCache, submitVenueLit, type LitSubmitOutcome } from "@/lib/litEngine";
-import { cooldownRemainingMs, emptyLitVenueState, LIT_COOLDOWN_MINUTES, type LitVenueState } from "@/lib/litSignals";
+import {
+  fetchLitViewerContext,
+  fetchVenueLitStates,
+  invalidateLitCache,
+  submitVenueLit,
+  type LitSubmitOutcome,
+  type LitViewerContext,
+} from "@/lib/litEngine";
+import {
+  cooldownRemainingMs,
+  emptyLitVenueState,
+  evaluateLitEligibility,
+  litIneligibilityMessage,
+  LIT_COOLDOWN_MINUTES,
+  type LitEligibility,
+  type LitVenueState,
+} from "@/lib/litSignals";
 import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 
 /**
@@ -33,31 +48,41 @@ type UseVenueLitResult = {
   available: boolean;
   /** Milliseconds of cooldown left per venue, re-derived every second so labels count down. */
   cooldownMsByVenueId: Record<string, number>;
+  /** The client's mirror of `can_lit_venue()` per venue, so the button locks before the tap rather than after. */
+  eligibilityByVenueId: Record<string, LitEligibility>;
+  /** Why the button is locked, or null when there is nothing to say. */
+  messageByVenueId: Record<string, string | null>;
   /** Venue ids with an in-flight or optimistically-applied endorsement. */
   pendingVenueIds: Set<string>;
   submitLit: (venueId: string) => Promise<LitSubmitOutcome>;
   refresh: (forceRefresh?: boolean) => Promise<void>;
 };
 
+const EMPTY_VIEWER_CONTEXT: LitViewerContext = { userId: null, checkinByVenueId: {}, litsInQuotaWindow: 0 };
+
 function uniqueIds(values: string[]) {
   return Array.from(new Set(values.filter((value) => typeof value === "string" && value.length > 0)));
 }
 
 /**
- * Refusals, in the user's terms. "ineligible" covers every conjunct of the
- * insert policy other than the cooldown, because RLS cannot report which one
- * failed — the copy names check-in because that is the path a user can act on.
+ * A refusal that already happened, in the user's terms.
+ *
+ * "ineligible" is every conjunct of the insert policy other than the cooldown
+ * collapsed into one boolean — RLS cannot report which failed. It is named as
+ * the check-in rule because the eligibility mirror below already locks the
+ * button for the reasons it can see, so reaching here means the client and the
+ * server disagreed, and a stale check-in is overwhelmingly why.
  */
-export function litOutcomeMessage(outcome: LitSubmitOutcome): string | null {
+function litOutcomeMessage(outcome: LitSubmitOutcome): string | null {
   switch (outcome.status) {
     case "ok":
       return null;
     case "unauthenticated":
-      return "Sign in to mark a venue lit.";
+      return litIneligibilityMessage("unauthenticated");
     case "cooling-down":
-      return "You already marked this one. Try again after it expires.";
+      return litIneligibilityMessage("cooling-down");
     case "ineligible":
-      return "Check in at this venue first — or you have hit tonight's limit.";
+      return litIneligibilityMessage("no-recent-checkin");
     case "unavailable":
       return null;
     case "error":
@@ -76,6 +101,10 @@ export function useVenueLit(options: UseVenueLitOptions): UseVenueLitResult {
 
   const [litByVenueId, setLitByVenueId] = useState<Record<string, LitVenueState>>({});
   const [available, setAvailable] = useState(true);
+  const [viewerContext, setViewerContext] = useState<LitViewerContext>(EMPTY_VIEWER_CONTEXT);
+  // Refusals the user has already collected. Cleared on every refresh so they read
+  // as transient acknowledgements; the persistent copy comes from eligibility below.
+  const [outcomeMessageByVenueId, setOutcomeMessageByVenueId] = useState<Record<string, string | null>>({});
   const [pendingVenueIds, setPendingVenueIds] = useState<Set<string>>(() => new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
   const mountedRef = useRef(true);
@@ -93,13 +122,18 @@ export function useVenueLit(options: UseVenueLitOptions): UseVenueLitResult {
         return;
       }
 
-      const result = await fetchVenueLitStates(venueIds, { supabase, forceRefresh });
+      const [result, context] = await Promise.all([
+        fetchVenueLitStates(venueIds, { supabase, forceRefresh }),
+        fetchLitViewerContext(venueIds, { supabase }),
+      ]);
       if (!mountedRef.current) {
         return;
       }
       setAvailable(result.available);
       setNowMs(Date.now());
       setLitByVenueId((current) => ({ ...current, ...result.statesByVenueId }));
+      setViewerContext(context);
+      setOutcomeMessageByVenueId((current) => (Object.keys(current).length > 0 ? {} : current));
     },
     [enabled, supabase, venueIds]
   );
@@ -146,6 +180,32 @@ export function useVenueLit(options: UseVenueLitOptions): UseVenueLitResult {
     return map;
   }, [litByVenueId, nowMs, venueIds]);
 
+  const eligibilityByVenueId = useMemo(() => {
+    const map: Record<string, LitEligibility> = {};
+    for (const venueId of venueIds) {
+      map[venueId] = evaluateLitEligibility({
+        isAuthenticated: Boolean(viewerContext.userId),
+        checkin: viewerContext.checkinByVenueId[venueId] ?? null,
+        viewerExpiresAt: litByVenueId[venueId]?.viewerExpiresAt ?? null,
+        litsInQuotaWindow: viewerContext.litsInQuotaWindow,
+        now: nowMs,
+      });
+    }
+    return map;
+  }, [litByVenueId, nowMs, venueIds, viewerContext]);
+
+  const messageByVenueId = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const venueId of venueIds) {
+      // Cooldown is already spelled out on the button face as a countdown, so
+      // repeating it underneath would be noise. Every other lock needs words.
+      const reason = eligibilityByVenueId[venueId]?.reason ?? null;
+      const standing = reason && reason !== "cooling-down" ? litIneligibilityMessage(reason) : null;
+      map[venueId] = outcomeMessageByVenueId[venueId] ?? standing;
+    }
+    return map;
+  }, [eligibilityByVenueId, outcomeMessageByVenueId, venueIds]);
+
   const submitLit = useCallback(
     async (venueId: string): Promise<LitSubmitOutcome> => {
       setPendingVenueIds((current) => new Set(current).add(venueId));
@@ -175,9 +235,12 @@ export function useVenueLit(options: UseVenueLitOptions): UseVenueLitResult {
       const outcome = await submitVenueLit(venueId, { supabase });
 
       invalidateLitCache(venueId);
+      // Ordering matters: refresh clears the outcome messages, so the message for
+      // this tap has to be written after it, not before.
       await refresh(true);
 
       if (mountedRef.current) {
+        setOutcomeMessageByVenueId((current) => ({ ...current, [venueId]: litOutcomeMessage(outcome) }));
         setPendingVenueIds((current) => {
           const next = new Set(current);
           next.delete(venueId);
@@ -194,6 +257,8 @@ export function useVenueLit(options: UseVenueLitOptions): UseVenueLitResult {
     litByVenueId,
     available,
     cooldownMsByVenueId,
+    eligibilityByVenueId,
+    messageByVenueId,
     pendingVenueIds,
     submitLit,
     refresh,

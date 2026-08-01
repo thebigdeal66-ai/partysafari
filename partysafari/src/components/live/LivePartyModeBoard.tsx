@@ -7,7 +7,7 @@ import VenuePartyCard from "@/components/discover/VenuePartyCard";
 import { usePartyScores } from "@/hooks/usePartyScore";
 import { useLiveVenueMetrics } from "@/hooks/useLiveVenueMetrics";
 import { useVisibleVenueIds } from "@/hooks/useVisibleVenueIds";
-import { litOutcomeMessage, useVenueLit } from "@/hooks/useVenueLit";
+import { useVenueLit } from "@/hooks/useVenueLit";
 import { litBoostPoints } from "@/lib/litSignals";
 
 type VenueSummary = {
@@ -97,15 +97,6 @@ export default function LivePartyModeBoard() {
   const topVenues = venuesWithMetrics.slice(0, 12);
 
   const lit = useVenueLit({ venueIds, enabled: venueIds.length > 0 });
-  const [litMessages, setLitMessages] = useState<Record<string, string | null>>({});
-  const submitLit = lit.submitLit;
-  const handleLit = useCallback(
-    async (venueId: string) => {
-      const outcome = await submitLit(venueId);
-      setLitMessages((current) => ({ ...current, [venueId]: litOutcomeMessage(outcome) }));
-    },
-    [submitLit]
-  );
 
   const setCardRef = useCallback(
     (venueId: string) => (node: HTMLDivElement | null) => {
@@ -163,8 +154,9 @@ export default function LivePartyModeBoard() {
                 litBoost={litBoostPoints(lit.litByVenueId[venue.id]?.decayWeight ?? 0)}
                 litPending={lit.pendingVenueIds.has(venue.id)}
                 litAvailable={lit.available}
-                litMessage={litMessages[venue.id] ?? null}
-                onLit={handleLit}
+                litEligible={lit.eligibilityByVenueId[venue.id]?.canLit ?? false}
+                litMessage={lit.messageByVenueId[venue.id] ?? null}
+                onLit={lit.submitLit}
               />
             </div>
           );

@@ -42,6 +42,9 @@ type VenuePartyCardProps = {
   litPending?: boolean;
   /** False when db/020 is undeployed — the button is hidden rather than offered and refused. */
   litAvailable?: boolean;
+  /** False when the viewer has no recent check-in here, is cooling down, or is over the nightly ceiling. */
+  litEligible?: boolean;
+  /** Why the button is locked, rendered beneath it so the lock is never silent. */
   litMessage?: string | null;
   onLit?: (venueId: string) => void | Promise<unknown>;
 };
@@ -142,6 +145,7 @@ export default function VenuePartyCard({
   litBoost = 0,
   litPending = false,
   litAvailable = false,
+  litEligible = false,
   litMessage = null,
   onLit,
 }: VenuePartyCardProps) {
@@ -246,6 +250,7 @@ export default function VenuePartyCard({
               hasLit={litHasViewer}
               cooldownSecondsRemaining={litCooldownSeconds}
               pending={litPending}
+              disabled={!litEligible}
               message={litMessage}
               onLit={onLit}
             />

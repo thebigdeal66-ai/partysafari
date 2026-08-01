@@ -1,14 +1,17 @@
 import { DEFAULT_PARTY_SCORE_WEIGHTS } from "@/lib/partyScore";
 
 /**
- * Pure model for the Lit Button — windows, decay and cooldown arithmetic, with
- * no Supabase and no DOM, so it can be unit-tested directly (see
- * `litSignals.test.ts`) and reused by both the scoring engine and the UI.
+ * Pure model for the Lit Button — eligibility, windows, decay and cooldown
+ * arithmetic, with no Supabase and no DOM, so it can be unit-tested directly
+ * (see `litSignals.test.ts`) and reused by both the scoring engine and the UI.
  *
- * None of this is enforcement. The cooldown that actually holds is the
- * exclusion constraint in `db/020_create_venue_lit_signals.sql`; the functions
- * here exist so the button can show the user what the database is going to say
- * before they tap it, per MASTERPLAN's "cooldown is shown, not hidden".
+ * None of this is enforcement. The rules that actually hold are in
+ * `db/020_create_venue_lit_signals.sql`: `can_lit_venue()` for eligibility,
+ * `within_lit_night_quota()` for the ceiling, and a GiST exclusion constraint
+ * for the cooldown. The functions here mirror those three so the button can
+ * tell the user what the database is going to say before they tap it, per
+ * MASTERPLAN's "cooldown is shown, not hidden". Every constant below has a
+ * named counterpart in that file and the two must move together.
  */
 
 /**
@@ -26,9 +29,27 @@ export const LIT_COOLDOWN_MINUTES = 60;
  */
 export const LIT_DECAY_HALF_LIFE_MINUTES = 20;
 
+/**
+ * How recently the user must have checked in at a venue for the Lit Button to
+ * unlock there. Mirrors `checked_in_at > NOW() - INTERVAL '90 minutes'` in
+ * `can_lit_venue()` — change both together.
+ *
+ * Deliberately shorter than a check-in's own six-hour `expires_at` default: an
+ * unexpired check-in only proves the user was at the venue at some point this
+ * evening, and Lit is a claim about right now.
+ */
+export const LIT_CHECKIN_RECENCY_MINUTES = 90;
+
+/** Endorsements one user may make across all venues per rolling window. Mirrors `within_lit_night_quota()`. */
+export const LIT_NIGHT_QUOTA_LIMIT = 10;
+
+/** Rolling rather than per calendar night, so midnight does not hand out a fresh allowance. */
+export const LIT_NIGHT_QUOTA_WINDOW_HOURS = 12;
+
 const MINUTE_MS = 60_000;
 const LIT_COOLDOWN_MS = LIT_COOLDOWN_MINUTES * MINUTE_MS;
 const LIT_DECAY_HALF_LIFE_MS = LIT_DECAY_HALF_LIFE_MINUTES * MINUTE_MS;
+const LIT_CHECKIN_RECENCY_MS = LIT_CHECKIN_RECENCY_MINUTES * MINUTE_MS;
 
 /** One active endorsement, as published by the `venue_lit_activity` view. */
 export type LitActivityRow = {
@@ -147,6 +168,106 @@ export function cooldownRemainingMs(viewerExpiresAt: string | null, now = Date.n
  */
 export function isWithinCooldown(viewerExpiresAt: string | null, now = Date.now()): boolean {
   return cooldownRemainingMs(viewerExpiresAt, now) > 0;
+}
+
+/** The viewer's most recent check-in at one venue, as published by `venue_checkins`. */
+export type LitCheckin = {
+  checkedInAt: string;
+  expiresAt: string;
+};
+
+/**
+ * Why the button is locked. Ordered by how actionable the copy is, not by the
+ * order `can_lit_venue()` evaluates its conjuncts — RLS refuses as a single
+ * boolean and never says which part failed, so the client picks the one reason
+ * worth showing.
+ */
+export type LitIneligibilityReason =
+  | "unauthenticated"
+  | "cooling-down"
+  | "night-quota-reached"
+  | "no-recent-checkin";
+
+export type LitEligibility = {
+  canLit: boolean;
+  reason: LitIneligibilityReason | null;
+};
+
+export type LitEligibilityInput = {
+  isAuthenticated: boolean;
+  /** The viewer's live check-in at this venue, or null if they have none. */
+  checkin: LitCheckin | null;
+  /** Expiry of the viewer's own active endorsement here, from `summarizeLitActivity`. */
+  viewerExpiresAt: string | null;
+  /** How many endorsements the viewer has made across all venues in the rolling quota window. */
+  litsInQuotaWindow: number;
+  now?: number;
+};
+
+/**
+ * The check-in half of `can_lit_venue()`. Both bounds are required and both are
+ * strict, matching the SQL: `checked_in_at` carries the 90-minute recency rule,
+ * and `expires_at` is still consulted so a lapsed check-in cannot unlock the
+ * button. A check-in that is unexpired but three hours old is not enough — that
+ * is the defect this window exists to close.
+ */
+export function hasRecentCheckin(checkin: LitCheckin | null, now = Date.now()): boolean {
+  if (!checkin) {
+    return false;
+  }
+  const checkedInMs = parseIso(checkin.checkedInAt);
+  const expiresMs = parseIso(checkin.expiresAt);
+  if (!Number.isFinite(checkedInMs) || !Number.isFinite(expiresMs)) {
+    return false;
+  }
+  return checkedInMs > now - LIT_CHECKIN_RECENCY_MS && expiresMs > now;
+}
+
+/** The ceiling half, mirroring `within_lit_night_quota()`. */
+export function withinNightQuota(litsInQuotaWindow: number): boolean {
+  return litsInQuotaWindow < LIT_NIGHT_QUOTA_LIMIT;
+}
+
+/**
+ * The client-side mirror of the whole server gate. A `canLit: false` predicts a
+ * refusal; it does not cause one. Notably absent is an RSVP path — a 'going'
+ * RSVP is intent declared in advance from anywhere and never unlocks Lit, here
+ * or in `can_lit_venue()`.
+ *
+ * Venue self-endorsement is enforced server-side only. The client does not read
+ * `venues.owner_id`, so it cannot predict that refusal and does not pretend to;
+ * an owner who taps gets the post-hoc refusal instead.
+ */
+export function evaluateLitEligibility(input: LitEligibilityInput): LitEligibility {
+  const now = input.now ?? Date.now();
+
+  if (!input.isAuthenticated) {
+    return { canLit: false, reason: "unauthenticated" };
+  }
+  if (isWithinCooldown(input.viewerExpiresAt, now)) {
+    return { canLit: false, reason: "cooling-down" };
+  }
+  if (!withinNightQuota(input.litsInQuotaWindow)) {
+    return { canLit: false, reason: "night-quota-reached" };
+  }
+  if (!hasRecentCheckin(input.checkin, now)) {
+    return { canLit: false, reason: "no-recent-checkin" };
+  }
+  return { canLit: true, reason: null };
+}
+
+/** Why the button is locked, in the user's terms and naming the action that unlocks it. */
+export function litIneligibilityMessage(reason: LitIneligibilityReason): string {
+  switch (reason) {
+    case "unauthenticated":
+      return "Sign in to mark a venue lit.";
+    case "cooling-down":
+      return "You already marked this one lit. It unlocks again when your signal expires.";
+    case "night-quota-reached":
+      return `You've used all ${LIT_NIGHT_QUOTA_LIMIT} lits for the last ${LIT_NIGHT_QUOTA_WINDOW_HOURS} hours. They free up as that window rolls forward.`;
+    case "no-recent-checkin":
+      return `Check in at this venue to unlock Lit — a check-in counts for ${LIT_CHECKIN_RECENCY_MINUTES} minutes.`;
+  }
 }
 
 /** "42m" / "3m" / "45s" — coarse on purpose, this sits inside a button label. */

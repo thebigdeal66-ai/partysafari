@@ -1,5 +1,13 @@
 import { createSupabaseBrowser, resolveCurrentUserId } from "@/lib/supabaseClient";
-import { emptyLitVenueState, summarizeLitActivity, type LitActivityRow, type LitVenueState } from "@/lib/litSignals";
+import {
+  emptyLitVenueState,
+  summarizeLitActivity,
+  LIT_CHECKIN_RECENCY_MINUTES,
+  LIT_NIGHT_QUOTA_WINDOW_HOURS,
+  type LitActivityRow,
+  type LitCheckin,
+  type LitVenueState,
+} from "@/lib/litSignals";
 import { logSupabaseQueryError, normalizeUnknownError } from "@/lib/supabaseDiagnostics";
 
 /**
@@ -7,10 +15,11 @@ import { logSupabaseQueryError, normalizeUnknownError } from "@/lib/supabaseDiag
  * cache, de-duplicated concurrent reads for the same venue set — so a screen
  * full of venue cards costs one query rather than one per card.
  *
- * Every read goes through `public.venue_lit_activity`, the anonymising view
- * from db/020. The underlying `venue_lit_signals` table is never selected from:
- * its RLS only exposes the caller's own rows, and the view is what turns that
- * into a public aggregate without disclosing who endorsed a venue.
+ * Every aggregate read goes through `public.venue_lit_activity`, the anonymising
+ * view from db/020, which is what turns own-rows-only RLS into a public count
+ * without disclosing who endorsed a venue. The base `venue_lit_signals` table is
+ * only ever touched for the caller's own rows — the insert, and the quota count
+ * in `fetchLitViewerContext` — never to read anyone else's history.
  *
  * `db/020` has not been applied to the live project, so the view is expected to
  * be missing in production. A missing view is reported as `available: false`
@@ -44,6 +53,12 @@ type LitActivityQueryRow = {
   created_at?: string | null;
   expires_at?: string | null;
   is_viewer?: boolean | null;
+};
+
+type CheckinQueryRow = {
+  venue_id?: string | null;
+  checked_in_at?: string | null;
+  expires_at?: string | null;
 };
 
 type CacheEntry = {
@@ -165,6 +180,83 @@ export async function fetchVenueLitStates(venueIdsInput: string[], options: LitF
 }
 
 /**
+ * Everything the client needs to predict `can_lit_venue()` and
+ * `within_lit_night_quota()` before the user taps, so an ineligible user is told
+ * what to do instead of being handed a refusal after the fact.
+ *
+ * Both reads are scoped to the caller. The `venue_lit_signals` count is the
+ * caller's own rows, which is all its RLS exposes anyway; the aggregate for
+ * other users stays behind `venue_lit_activity`.
+ *
+ * A failed read degrades to "no check-in, no quota used" rather than throwing.
+ * That biases towards showing the unlock instruction, which is the same thing
+ * the server would do with the request.
+ */
+export type LitViewerContext = {
+  userId: string | null;
+  /** The viewer's live check-in per venue, empty where they have none. */
+  checkinByVenueId: Record<string, LitCheckin>;
+  /** The viewer's endorsements across all venues inside the rolling quota window. */
+  litsInQuotaWindow: number;
+};
+
+export async function fetchLitViewerContext(
+  venueIdsInput: string[],
+  options: { supabase?: SupabaseClientLike } = {}
+): Promise<LitViewerContext> {
+  const venueIds = uniqueIds(venueIdsInput);
+  const userId = await resolveCurrentUserId();
+  const empty: LitViewerContext = { userId, checkinByVenueId: {}, litsInQuotaWindow: 0 };
+
+  if (!userId || venueIds.length === 0) {
+    return empty;
+  }
+
+  const supabase = options.supabase || createSupabaseBrowser();
+  const now = Date.now();
+  const checkinSinceIso = new Date(now - LIT_CHECKIN_RECENCY_MINUTES * 60_000).toISOString();
+  const quotaSinceIso = new Date(now - LIT_NIGHT_QUOTA_WINDOW_HOURS * 3_600_000).toISOString();
+  const nowIso = new Date(now).toISOString();
+
+  const [checkinsSettled, quotaSettled] = await Promise.allSettled([
+    supabase
+      .from("venue_checkins")
+      .select("venue_id, checked_in_at, expires_at")
+      .eq("profile_id", userId)
+      .in("venue_id", venueIds)
+      .gt("checked_in_at", checkinSinceIso)
+      .gt("expires_at", nowIso),
+    supabase
+      .from("venue_lit_signals")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gt("created_at", quotaSinceIso),
+  ]);
+
+  const context: LitViewerContext = { userId, checkinByVenueId: {}, litsInQuotaWindow: 0 };
+
+  if (checkinsSettled.status === "fulfilled" && !checkinsSettled.value.error) {
+    for (const row of (checkinsSettled.value.data || []) as CheckinQueryRow[]) {
+      if (!row.venue_id || !row.checked_in_at || !row.expires_at) {
+        continue;
+      }
+      context.checkinByVenueId[row.venue_id] = {
+        checkedInAt: row.checked_in_at,
+        expiresAt: row.expires_at,
+      };
+    }
+  }
+
+  // Expected to fail until db/020 is deployed. The button is hidden in that
+  // case anyway, so a zero here is never the thing that gates a real tap.
+  if (quotaSettled.status === "fulfilled" && !quotaSettled.value.error) {
+    context.litsInQuotaWindow = quotaSettled.value.count ?? 0;
+  }
+
+  return context;
+}
+
+/**
  * Record one endorsement.
  *
  * Only `venue_id` and `user_id` are sent. `created_at` and `expires_at` are left
@@ -206,10 +298,10 @@ export async function submitVenueLit(venueId: string, options: { supabase?: Supa
     return { status: "cooling-down" };
   }
 
-  // 42501 — the insert policy refused: not checked in, no live event RSVP, owns the venue,
-  // over the nightly ceiling, or inside the cooldown the policy also mirrors. RLS cannot
-  // report which conjunct failed, so the caller distinguishes cooldown from the rest using
-  // the state it already holds.
+  // 42501 — the insert policy refused: no check-in inside the 90-minute recency window,
+  // owns the venue, over the nightly ceiling, or inside the cooldown the policy also
+  // mirrors. RLS cannot report which conjunct failed, so the caller names the reason from
+  // the eligibility state it already holds.
   if (code === "42501" || message.includes("row-level security")) {
     return { status: "ineligible" };
   }

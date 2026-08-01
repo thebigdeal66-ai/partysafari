@@ -8,10 +8,23 @@
 -- Implements MASTERPLAN.md § "Lit Button Specification" → "Eligibility and anti-abuse".
 --
 -- NOT APPLIED TO PRODUCTION. Like db/018 and db/019 before it, this file is a version-control
--- artifact only. It has not been executed against the live Supabase project and no live schema
--- snapshot was taken while writing it — deployment is a separate, separately-approved step. Unlike
--- 018/019 there are therefore no "VERIFIED AGAINST LIVE" annotations anywhere in this file, and
--- none should be inferred. See SECURITY_NOTES.md, "db/001-017 were never applied to production".
+-- artifact only. It has not been executed against the live Supabase project — deployment is a
+-- separate, separately-approved step. See SECURITY_NOTES.md, "db/001-017 were never applied to
+-- production".
+--
+-- A read-only live snapshot WAS taken during the pre-merge audit (2026-07-31), so statements below
+-- marked VERIFIED AGAINST LIVE were checked against production rather than against db/. The
+-- audit also confirmed migration history carries no "020" entry and no drift: live tracks 14
+-- timestamp-named migrations plus `018_venue_ownership` and `019_venue_content_rls`, and none of
+-- the hand-numbered db/001-017 files appear in it.
+--
+-- VERIFIED AGAINST LIVE (2026-07-31): zero naming collisions for anything this file introduces —
+-- no `venue_lit_signals` table, no `venue_lit_activity` view, no `can_lit_venue` or
+-- `within_lit_night_quota` function, and no policy named "Users can read their own lit signals" or
+-- "Eligible users can insert their own lit signal" exists in the live `public` schema. The
+-- existing policies on `venue_checkins`, `event_rsvps`, `venues` and `events` were reviewed for
+-- name overlap and there is none, so unlike db/018 and db/019 this migration has no looser live
+-- policy to drop out from under itself.
 --
 -- Because this table does not exist live, every reader added in this sprint
 -- (`src/lib/litEngine.ts`, the Party Score engine) treats a missing table or view as "no lit
@@ -24,6 +37,11 @@
 -- btree_gist supplies the `=` operator class GiST needs for the uuid columns in the exclusion
 -- constraint below. Without it the ADD CONSTRAINT fails with "data type uuid has no default
 -- operator class for access method gist".
+--
+-- VERIFIED AGAINST LIVE (2026-07-31): btree_gist is NOT installed in production. `pg_extension`
+-- there holds only pg_graphql, pg_stat_statements, pgcrypto, plpgsql, supabase_vault and
+-- uuid-ossp. So this line is not a no-op the way it would be on a database that already had it —
+-- it is the statement that makes the exclusion constraint below possible at all.
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 -- `public.profiles` has no CREATE TABLE anywhere in db/ — it is one of the tables that exists in
@@ -31,6 +49,12 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 -- noted in db/019). This migration still targets it deliberately: `public.profiles.id` is the
 -- established user-reference FK target in this codebase, per `venues.owner_id`. Fail loudly here
 -- rather than emitting a confusing FK error twenty lines down.
+--
+-- VERIFIED AGAINST LIVE (2026-07-31): `public.profiles` has PK `id uuid NOT NULL` with no default
+-- and FK `profiles_id_fkey: id -> auth.users(id) ON DELETE CASCADE`. profiles.id was confirmed
+-- 1:1 with auth.users.id (zero mismatches across every row), which is what makes comparing
+-- `venue_lit_signals.user_id` to `auth.uid()` sound even though the two tables reached the same
+-- uuid by different declared FK routes.
 DO $$
 BEGIN
   IF to_regclass('public.profiles') IS NULL THEN
@@ -53,10 +77,10 @@ END $$;
 -- UX spec.
 --
 -- No latitude/longitude column. MASTERPLAN lists "coarse location metadata" under auditability
--- alongside a device-radius proximity option, but this sprint gates on an active check-in or a
--- live event RSVP instead of device GPS (see `can_lit_venue` below), so there is no location
--- reading to record and a nullable column nothing writes would be dead schema. Add it in the same
--- migration that adds device-radius gating.
+-- alongside a device-radius proximity option, but this sprint gates on a recent check-in instead
+-- of device GPS (see `can_lit_venue` below), so there is no location reading to record and a
+-- nullable column nothing writes would be dead schema. Add it in the same migration that adds
+-- device-radius gating.
 CREATE TABLE IF NOT EXISTS public.venue_lit_signals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   venue_id UUID NOT NULL REFERENCES public.venues(id) ON DELETE CASCADE,
@@ -74,10 +98,16 @@ ALTER TABLE public.venue_lit_signals ADD COLUMN IF NOT EXISTS expires_at TIMESTA
 -- The cooldown, enforced by the database rather than by the policy below.
 --
 -- A partial unique index (`... WHERE expires_at > NOW()`) cannot express this: index predicates
--- must be IMMUTABLE and NOW() is not. A plain UNIQUE (venue_id, user_id) — the shape
--- `venue_checkins` uses — cannot express it either, because check-ins are deleted on checkout
--- whereas lit rows are kept forever for audit, so the second endorsement of the night would be
--- rejected rather than the second endorsement of the hour.
+-- must be IMMUTABLE and NOW() is not. A plain UNIQUE (venue_id, user_id) cannot express it
+-- either, because lit rows are kept forever for audit, so the second endorsement of the night
+-- would be rejected rather than the second endorsement of the hour.
+--
+-- VERIFIED AGAINST LIVE (2026-07-31): an earlier revision of this comment justified the choice by
+-- claiming `venue_checkins` rows "are deleted on checkout". That is false against production —
+-- `venue_checkins` has no checkout path, no delete trigger, and no deletion mechanism of any
+-- kind; rows simply age out via `expires_at` (default `now() + INTERVAL '6 hours'`). The
+-- conclusion is unchanged and the reasoning is if anything stronger: neither table deletes rows,
+-- so a plain UNIQUE would permanently bar a user's second endorsement at a venue.
 --
 -- An exclusion constraint over the active interval says exactly the intended thing: the same user
 -- may not hold two overlapping active endorsements for the same venue. It is enforced by an index,
@@ -119,21 +149,51 @@ CREATE INDEX IF NOT EXISTS idx_venue_lit_signals_user_recent
 -- `SET search_path = public` matches db/018 and is the reason the unqualified names inside cannot
 -- be hijacked by a caller-controlled search_path.
 --
--- Two accepted proofs of presence, per MASTERPLAN "an active check-in at the venue, or a device
--- location within a small radius":
+-- Exactly ONE accepted proof of presence: a check-in at this venue made within the last 90
+-- minutes and not yet expired. Per MASTERPLAN, "a Lit signal requires plausible physical
+-- presence — an active check-in at the venue".
 --
---   1. An unexpired row in `venue_checkins` for this venue. This is the primary path.
---   2. A 'going' RSVP to an event at this venue that is running right now. MASTERPLAN does not
---      name this case, but a person at a venue for its event is exactly the person the feature is
---      for, and requiring them to also press check-in first would be a UX trap.
+-- The 90 minutes is the recency window, and it is stated explicitly here rather than inherited
+-- from the check-in row's own lifetime.
 --
--- Device-radius gating is deliberately NOT implemented. It needs a location column, a distance
--- function and a spoofing story of its own; check-in already carries the same claim and is
--- already enforced. Tracked as follow-up.
+-- VERIFIED AGAINST LIVE (2026-07-31): `public.venue_checkins` is exactly
+--   id uuid PK default gen_random_uuid()
+--   venue_id uuid NOT NULL REFERENCES venues(id) ON DELETE CASCADE
+--   profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE
+--   checked_in_at timestamptz NOT NULL default now()
+--   expires_at timestamptz NOT NULL default now() + INTERVAL '6 hours'
+--   created_at timestamptz NOT NULL default now()
+-- with NO trigger and NO checkout or delete path — rows are never removed, they only age past
+-- `expires_at`. That is why `expires_at > NOW()` alone is NOT the intended gate: on live data it
+-- means "checked in at some point in the last six hours", which is a claim about this evening,
+-- not about being in the room now. Both conditions are therefore required — `checked_in_at`
+-- carries the 90-minute recency rule, and `expires_at` is still consulted so that an explicitly
+-- shortened or already-lapsed check-in cannot unlock the button.
 --
--- `venue_checkins.profile_id` holds an auth user id (db/017 declares the FK against
--- `auth.users(id)`), and `profiles.id` is 1:1 with `auth.users.id`, so comparing it to
--- `venue_lit_signals.user_id` / `auth.uid()` is sound despite the differing declared FK targets.
+-- Note the FK target: live `venue_checkins.profile_id` references `public.profiles(id)`, not
+-- `auth.users(id)` as db/017 declares. Either way it holds the same uuid as `auth.uid()` (see the
+-- profiles annotation above), so the comparison against `p_user_id` is sound.
+--
+-- RSVP is deliberately NOT a proof of presence. An earlier revision of this function also
+-- unlocked Lit for a 'going' RSVP to an event running at the venue; that branch is removed. A
+-- 'going' RSVP is a statement of intent made in advance from anywhere, so accepting it would let
+-- any account endorse a venue it has never physically visited — the exact abuse the proximity
+-- gate exists to prevent. RSVP remains a Party Score input (`goingRsvps` / `interestedRsvps` in
+-- src/lib/partyScoreEngine.ts), where it is a confidence signal rather than proof of attendance;
+-- it must not reappear in this eligibility gate. The `public.events` and `public.event_rsvps`
+-- joins that branch needed are gone with it.
+--
+-- VERIFIED AGAINST LIVE (2026-07-31), recorded because the removal was a judgement call and not a
+-- schema problem: `public.event_rsvps` is exactly `id uuid PK`, `event_id uuid NOT NULL
+-- REFERENCES events(id) ON DELETE CASCADE`, `user_id uuid NOT NULL REFERENCES auth.users(id) ON
+-- DELETE CASCADE` (auth.users directly — a different convention from venue_checkins above),
+-- `status text NOT NULL`, `created_at`, `updated_at`, with `interested` and `going` observed as
+-- live status values. The removed branch matched that shape correctly. It was dropped because
+-- RSVP is the wrong signal for this gate, not because it was mis-written.
+--
+-- Device-radius gating is deliberately NOT implemented this sprint. It needs a location column, a
+-- distance function and a spoofing story of its own; a recent check-in already carries the same
+-- claim and is already enforced. Tracked as follow-up.
 CREATE OR REPLACE FUNCTION public.can_lit_venue(p_user_id UUID, p_venue_id UUID)
 RETURNS BOOLEAN
 LANGUAGE SQL
@@ -145,32 +205,24 @@ AS $$
     p_user_id IS NOT NULL
     AND p_venue_id IS NOT NULL
     -- A venue cannot endorse itself. MASTERPLAN: "Venue-owned accounts cannot Lit their own venue."
+    --
+    -- VERIFIED AGAINST LIVE (2026-07-31): `public.venues` has PK `id uuid DEFAULT
+    -- gen_random_uuid()` and a nullable `owner_id uuid`, so this block is schema-correct as
+    -- written. `owner_id` is NULL on every live row today, which makes the check inert in
+    -- production until db/018 assigns owners — it is not wrong, it simply has nothing to match yet.
     AND NOT EXISTS (
       SELECT 1
       FROM public.venues v
       WHERE v.id = p_venue_id
         AND v.owner_id = p_user_id
     )
-    AND (
-      EXISTS (
-        SELECT 1
-        FROM public.venue_checkins c
-        WHERE c.venue_id = p_venue_id
-          AND c.profile_id = p_user_id
-          AND c.expires_at > NOW()
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM public.events e
-        JOIN public.event_rsvps r ON r.event_id = e.id
-        WHERE e.venue_id = p_venue_id
-          AND r.user_id = p_user_id
-          AND LOWER(COALESCE(r.status, '')) = 'going'
-          -- Mirrors isEventActive() in src/lib/partyScoreEngine.ts: a null bound means "no bound",
-          -- not "excluded". An event with no end_time is treated as running for six hours.
-          AND COALESCE(e.start_time, NOW()) <= NOW()
-          AND COALESCE(e.end_time, e.start_time + INTERVAL '6 hours', NOW() + INTERVAL '6 hours') > NOW()
-      )
+    AND EXISTS (
+      SELECT 1
+      FROM public.venue_checkins c
+      WHERE c.venue_id = p_venue_id
+        AND c.profile_id = p_user_id
+        AND c.checked_in_at > NOW() - INTERVAL '90 minutes'
+        AND c.expires_at > NOW()
     );
 $$;
 
@@ -184,6 +236,10 @@ $$;
 -- bar crawl (the per-venue cooldown already caps them at one per venue per hour) and tight enough
 -- that a single compromised account cannot move the city-level ranking. Revisit against real
 -- Founding-cohort data before the ceiling is treated as tuned.
+--
+-- Reviewed unchanged in the 2026-07-31 pre-merge audit: the rolling window found no concrete
+-- defect, so it is deliberately left exactly as it was rather than retuned alongside the
+-- eligibility fix above.
 CREATE OR REPLACE FUNCTION public.within_lit_night_quota(p_user_id UUID)
 RETURNS BOOLEAN
 LANGUAGE SQL
