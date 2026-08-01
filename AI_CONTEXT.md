@@ -113,6 +113,9 @@ the same pull request.
 | `partysafari/src/lib/partyScoreEngine.ts` | Data gathering from Supabase, 30-second TTL cache, in-flight request de-duplication, graceful degradation via `placeholders`, `calculatePartyScore()` / `calculatePartyScores()` / `getCachedPartyScore()` |
 | `partysafari/src/hooks/usePartyScore.ts` | React access: `usePartyScores()` for a set of venues, `usePartyScore()` for one |
 | `partysafari/src/lib/venueCheckInUtils.ts` | Crowd level thresholds and presentation (`Quiet` / `Getting Busy` / `Busy` / `Packed`) |
+| `partysafari/src/lib/partyScorePresentation.ts` | Display layer: `describePartyScore()` decides whether a score is worth showing as a number at all |
+| `partysafari/src/lib/psi.ts` | PSI Phase 1 — `attributePartyScore()`, `explainVenue()`, `buildPsiInsights()`. Pure interpretation over `PartyScoreDetails`; no I/O |
+| `partysafari/src/hooks/useVenuePsi.ts` | React access to PSI. Takes a `PartyScoreDetails` the caller already has; deliberately does not fetch |
 
 **Do not write a second scoring function. Not a "simplified version for this card," not a
 "quick heat calculation," not a `vibeScore`, `venueRating`, `heatIndex`, or `energyLevel`.** If a
@@ -130,6 +133,14 @@ replace it:
 - Personalization and ranking layers consume `PartyScoreDetails` — including `breakdown`,
   `momentum`, `trend`, and `confidence` — and reorder or annotate. They do not recompute.
 - Weight changes are a product decision. Document before/after behavior on real venues in the PR.
+
+**PSI Phase 1 already exists in `lib/psi.ts`** — extend it rather than starting a parallel one.
+Anything that explains, ranks, or interprets a venue belongs there. Two rules keep it honest:
+every point figure must come from `DEFAULT_PARTY_SCORE_WEIGHTS` rather than a local constant, and
+every user-visible claim must carry the signal key and raw value it came from, so it is traceable
+to a row that exists. `psi.test.ts` reconciles PSI's attribution against the engine's own
+`breakdown`, so adding a signal to `partyScore.ts` without adding it to `SCORE_CONTRIBUTIONS` in
+`psi.ts` fails the test suite by design.
 
 ### Reuse existing hooks whenever possible
 

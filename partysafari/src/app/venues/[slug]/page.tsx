@@ -10,6 +10,9 @@ import RSVPSection from "@/components/RSVPSection";
 import VenueEventCard from "@/components/venue/VenueEventCard";
 import FriendsHereSection from "@/components/social/FriendsHereSection";
 import { toSafePartyScore } from "@/lib/partyScore";
+import { describePartyScore } from "@/lib/partyScorePresentation";
+import { useVenuePsi } from "@/hooks/useVenuePsi";
+import PsiInsights from "@/components/discover/PsiInsights";
 import StoryGrid from "@/components/stories/StoryGrid";
 import StoryViewer from "@/components/stories/StoryViewer";
 import { usePartyScore } from "@/hooks/usePartyScore";
@@ -198,6 +201,11 @@ export default function VenuePage() {
     subscribeVisibleOnly: true,
   });
   const { partyScore } = usePartyScore(venue?.id || null, Boolean(venue?.id));
+  // Called here rather than beside the render below, which sits after this
+  // component's loading and not-found early returns.
+  const { insights: psiInsights } = useVenuePsi(partyScore, {
+    programmedEvent: tonightEvents[0] ? getEventTitle(tonightEvents[0]) : null,
+  });
 
   const loadEvents = useCallback(async (venueId: string) => {
     const { data, error } = await supabase
@@ -374,6 +382,14 @@ export default function VenuePage() {
   const liveCount = metrics?.liveCheckins || 0;
   const liveCrowdLevel = metrics?.crowdLevel || normalizeCrowdLevel(venue.crowd_level);
   const safePartyScore = toSafePartyScore(partyScore);
+  // A venue with no signals yet scores 0, which is accurate but reads as broken.
+  // The presentation layer decides whether the number is worth showing at all.
+  const scoreDisplay = describePartyScore(safePartyScore, {
+    liveCheckins: liveCount,
+    storyCount: metrics?.activeStories || 0,
+    friendsHereCount: metrics?.friendsHere || 0,
+    hasProgrammedEvent: tonightEvents.length > 0,
+  });
   const trendLabel = safePartyScore.trend === "up" ? "Up" : safePartyScore.trend === "down" ? "Down" : "Stable";
   const updatedAtDate = safePartyScore.updatedAt ? new Date(safePartyScore.updatedAt) : null;
   const updatedAtLabel = updatedAtDate && !Number.isNaN(updatedAtDate.getTime())
@@ -414,7 +430,9 @@ export default function VenuePage() {
             <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/80">Stories: {metrics?.activeStories || 0}</span>
             <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/80">Events: {metrics?.currentEvents || 0}</span>
             <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/80">Friends: {metrics?.friendsHere || 0}</span>
-            <span className="rounded-full bg-orange-500/15 px-3 py-1 text-sm text-orange-100">Party Score: {safePartyScore.score ?? 0}</span>
+            <span className="rounded-full bg-orange-500/15 px-3 py-1 text-sm text-orange-100">
+              {scoreDisplay.showScore ? `Party Score: ${scoreDisplay.score}` : scoreDisplay.headline}
+            </span>
             <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/80">Trend: {trendLabel}</span>
             <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/80">Momentum: {safePartyScore.momentum ?? 0}</span>
           </div>
@@ -550,10 +568,15 @@ export default function VenuePage() {
                 </div>
                 <div className="rounded-xl border border-orange-300/20 bg-orange-500/10 px-3 py-2">
                   <p className="text-xs uppercase tracking-[0.18em] text-orange-200">Party Score</p>
-                  <p className="mt-1 text-xl font-semibold text-orange-100">{safePartyScore.score ?? 0}</p>
+                  {scoreDisplay.showScore ? (
+                    <p className="mt-1 text-xl font-semibold text-orange-100">{scoreDisplay.score}</p>
+                  ) : (
+                    <p className="mt-1 text-sm font-semibold leading-tight text-orange-100">{scoreDisplay.headline}</p>
+                  )}
                 </div>
               </div>
               <p className="text-xs text-white/55">Last updated: {updatedAtLabel} • Confidence {Math.round((safePartyScore.confidence ?? 0) * 100)}%</p>
+              <PsiInsights venueId={venue.id} insights={psiInsights} />
               <div className="mt-4 pt-4 border-t border-white/10">
                 <VenueCheckInButton
                   venueId={venue.id}

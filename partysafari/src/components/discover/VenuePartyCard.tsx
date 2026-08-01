@@ -6,6 +6,8 @@ import { DEFAULT_PARTY_SCORE, type PartyScore } from "@/lib/partyScore";
 import { describePartyScore, formatScoreUpdatedLabel } from "@/lib/partyScorePresentation";
 import { getCrowdLevelColorClass, getCrowdLevelEmoji } from "@/lib/venueCheckInUtils";
 import LitButton from "@/components/discover/LitButton";
+import WhyThisVenue from "@/components/discover/WhyThisVenue";
+import type { PsiExplanation } from "@/lib/psi";
 
 type AnimatedValueProps = {
   value: number;
@@ -47,6 +49,8 @@ type VenuePartyCardProps = {
   /** Why the button is locked, rendered beneath it so the lock is never silent. */
   litMessage?: string | null;
   onLit?: (venueId: string) => void | Promise<unknown>;
+  /** PSI read on this venue. Omitted where PSI is not wired; the card renders without it. */
+  psiExplanation?: PsiExplanation | null;
 };
 
 function AnimatedValue({ value, suffix = "", className = "" }: AnimatedValueProps) {
@@ -148,6 +152,7 @@ export default function VenuePartyCard({
   litEligible = false,
   litMessage = null,
   onLit,
+  psiExplanation = null,
 }: VenuePartyCardProps) {
   const score = describePartyScore(partyScore ?? DEFAULT_PARTY_SCORE, {
     liveCheckins,
@@ -229,6 +234,8 @@ export default function VenuePartyCard({
           <StatTile label="Friends" value={friendsHereCount} />
           <StatTile label="Check-ins" value={liveCheckins} />
         </div>
+
+        {psiExplanation ? <WhyThisVenue explanation={psiExplanation} /> : null}
 
         <div className="grid gap-3 rounded-2xl border border-white/8 bg-black/25 p-3.5">
           <div>

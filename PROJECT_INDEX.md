@@ -11,8 +11,9 @@ Companion documents already on `main`:
 - `CONTRIBUTING.md` — contribution and review workflow.
 
 > **Important distinction:** `MASTERPLAN.md` describes several features that are **specified but
-> not yet built** (Lit Button, Crowd Pulse, PartySafari Intelligence / PSI). This index reports
-> only what is present in code. See [§10 Feature Inventory](#10-feature-inventory).
+> not yet built** (Lit Button, Crowd Pulse). PSI is now partially built — Phase 1 (explanations
+> and insights) ships in `lib/psi.ts`; ranking, trust scoring, and forecasting do not exist. This
+> index reports only what is present in code. See [§10 Feature Inventory](#10-feature-inventory).
 
 ---
 
@@ -365,9 +366,13 @@ All under `partysafari/src/lib/`.
 | `friendSync.ts` | 111 | Friend-relationship query helpers plus the `partysafari:friend-state-sync` custom browser event, which lets friend UI across the page react to a friend action without a shared store. |
 | `eventDateFormatter.ts` | 70 | `formatEventDateTime` / `formatEventDateOnly` / `formatEventTimeOnly`, each returning a graceful "unavailable" string on invalid input. |
 
-**There is no PSI (PartySafari Intelligence) code.** `MASTERPLAN.md` §"PartySafari Intelligence
-(PSI)" specifies it as a layer that would sit on top of `partyScore.ts` / `partyScoreEngine.ts`,
-but no such module, type, or identifier exists anywhere in the repository.
+**PSI (PartySafari Intelligence) exists at Phase 1 only.** `lib/psi.ts` is the whole of it: it
+reads the `PartyScoreDetails` that `partyScoreEngine` produced and derives per-signal attribution
+(`attributePartyScore`), one-sentence explanations (`explainVenue`), and ranking / interpretation /
+anomaly insights (`buildPsiInsights`). It is pure — no I/O, no tables of its own, and no second
+scoring path; `psi.test.ts` reconciles its attribution against the engine's own `breakdown` so the
+two cannot drift. The remaining `MASTERPLAN.md` §PSI scope — personalized re-ranking, trust and
+abuse scoring, and forecasting — is **not** implemented.
 
 ---
 
@@ -594,7 +599,7 @@ in-memory and lost on reload.
 | **Party Score** | **Complete** | `lib/partyScore.ts` (pure) + `lib/partyScoreEngine.ts` (I/O, cache, confidence) + `hooks/usePartyScore.ts` (realtime + polling). Six signal sources, 14 tunable weights, momentum and trend, 0–100 output, explicit `placeholders[]` when a signal is unavailable. The most complete subsystem in the repo. |
 | **Lit Button** | **❌ Does not exist** | Specified in `MASTERPLAN.md` §"Lit Button Specification" (line 184) as distinct from check-in — *"Check-in says I am here. The Lit Button says it is good here, come now."* **No implementation, no table, no component, no identifier exists in the codebase.** |
 | **Crowd Pulse** | **❌ Does not exist** | Specified in `MASTERPLAN.md` (lines 101, 239, 247) as an anonymised city-level aggregate heat view. **No implementation of any kind exists.** |
-| **PSI (PartySafari Intelligence)** | **❌ Does not exist** | Specified in `MASTERPLAN.md` §"PartySafari Intelligence (PSI)" (line 109) as an explainable layer above the Party Score. **No module, type, or reference exists in code.** |
+| **PSI (PartySafari Intelligence)** | **Partial — Phase 1** | `lib/psi.ts` (pure) + `hooks/useVenuePsi.ts` + `components/discover/PsiInsights.tsx` / `WhyThisVenue.tsx`. Delivers score attribution, "Why this venue?" explanations, and quiet-venue reads that replace a bare `0`. Reads `PartyScoreDetails`; never recomputes it. Personalized re-ranking, trust/abuse scoring, and forecasting from `MASTERPLAN.md` §PSI remain unbuilt. |
 | **Safari route planning** | **Complete** | `/safari` (1,913 ln): preferences, algorithmic generation, manual editing, persistence to `safari_plans` / `safari_stops`, live navigation. Not listed in the original brief but is the single largest feature in the repository. |
 | **Safari Radar** | **Complete** | `/radar` → `SafariRadarExperience` (1,475 ln): live clustered hotspot map. Also the target of the `/map` redirect. |
 | **Activity Feed** | **Partial** | `/feed` renders real `activity_feed` data server-side with RSVP dedupe, and likes work. But "Load More Posts" is inert (hard limit of 30 items), and like counts are split across two tables. |
@@ -633,7 +638,7 @@ on the code as it stands.
 | Venue Claims | 0% | — | No claim or verification flow exists. |
 | Lit Button | 0% | Specified in `MASTERPLAN.md` only. | Not implemented. |
 | Crowd Pulse | 0% | Specified in `MASTERPLAN.md` only. | Not implemented. |
-| PSI | 0% | Specified in `MASTERPLAN.md` only. | Not implemented. |
+| PSI | Phase 1 | `lib/psi.ts`, `hooks/useVenuePsi.ts`, `PsiInsights` / `WhyThisVenue`, `lib/psi.test.ts`. | Explanations and insights only. Re-ranking, trust scoring, and forecasting not implemented. |
 
 ---
 
@@ -923,6 +928,6 @@ Quick-reference reading lists. Paths are relative to `partysafari/` unless noted
 
 ### Where things are *not*
 `/src` at the repo root (dead scaffold) · global search (does not exist) · user settings (does not
-exist) · admin tools (do not exist) · venue claims (do not exist) · Lit Button, Crowd Pulse, PSI
-(specified in `MASTERPLAN.md`, not implemented) · tests (none) · CI (none) · API route handlers
-(none) · middleware (none).
+exist) · admin tools (do not exist) · venue claims (do not exist) · Lit Button, Crowd Pulse
+(specified in `MASTERPLAN.md`, not implemented) · PSI re-ranking, trust scoring and forecasting
+(only PSI Phase 1 explanations exist) · CI (none) · API route handlers (none) · middleware (none).
