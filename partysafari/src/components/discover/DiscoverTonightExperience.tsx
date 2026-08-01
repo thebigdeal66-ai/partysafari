@@ -2,11 +2,19 @@
 
 import Link from "next/link";
 import { memo } from "react";
-import EventRsvpControls from "@/components/events/EventRsvpControls";
-import SavedEventToggle from "@/components/SavedEventToggle";
 import StoryRailSurface from "@/components/stories/StoryRailSurface";
+import DiscoverHero from "@/components/discover/DiscoverHero";
+import EventStartingSoonCard from "@/components/discover/EventStartingSoonCard";
 import VenuePartyCard from "@/components/discover/VenuePartyCard";
-import { toSafePartyScore } from "@/lib/partyScore";
+import {
+  CardSkeleton,
+  EmptyState,
+  RowSkeleton,
+  SectionError,
+  SectionLink,
+  SectionShell,
+} from "@/components/discover/DiscoverSection";
+import { describePartyScore } from "@/lib/partyScorePresentation";
 import { useDiscoverTonightData } from "@/hooks/useDiscoverTonightData";
 
 function formatDateLabel(value: string) {
@@ -35,210 +43,134 @@ function formatCountdown(value: string) {
   return `${hours}h ${minutes}m`;
 }
 
-function SectionShell({
-  eyebrow,
-  title,
-  description,
-  action,
-  children,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-[32px] border border-white/10 bg-white/6 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.24)] backdrop-blur-xl sm:p-6">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-violet-200/70">{eyebrow}</p>
-          <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">{title}</h2>
-          <p className="mt-2 max-w-2xl text-sm text-white/65">{description}</p>
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function StatPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-3 backdrop-blur-md">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-white/50">{label}</p>
-      <p className="mt-2 text-xl font-semibold text-white">{value}</p>
-    </div>
-  );
-}
-
-function CardSkeleton() {
-  return <div className="h-80 animate-pulse rounded-[28px] border border-white/10 bg-white/6" />;
-}
-
-function RowSkeleton() {
-  return <div className="h-20 animate-pulse rounded-[24px] border border-white/10 bg-white/6" />;
-}
-
-function SectionError({ message }: { message: string }) {
-  return <div className="rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{message}</div>;
+function skeletons(count: number, Skeleton: () => React.JSX.Element) {
+  return Array.from({ length: count }).map((_, index) => <Skeleton key={index} />);
 }
 
 const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
   const data = useDiscoverTonightData();
+  const states = data.sectionStates;
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.15),transparent_24%),linear-gradient(180deg,#05060b_0%,#090510_48%,#06040a_100%)] px-4 py-5 text-white sm:px-6 sm:py-6">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-[linear-gradient(135deg,rgba(124,58,237,0.18),rgba(14,165,233,0.12)_45%,rgba(249,115,22,0.14))] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:p-8">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.12),transparent_18%),radial-gradient(circle_at_80%_0%,rgba(244,114,182,0.18),transparent_26%)]" />
-          <div className="relative grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
-            <div>
-              <p className="text-sm uppercase tracking-[0.34em] text-violet-100/75">Discover Tonight</p>
-              <h1 className="mt-4 text-5xl font-semibold tracking-tight text-white sm:text-6xl">🌆 Discover Tonight</h1>
-              <p className="mt-4 max-w-2xl text-lg text-white/75">The nightlife is happening now.</p>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <StatPill label="👥 People Out Tonight" value={data.peopleOutTonight.toLocaleString()} />
-                <StatPill label="🎉 Live Events" value={data.liveEvents.toLocaleString()} />
-                <StatPill label="📸 Active Stories" value={data.activeStories.toLocaleString()} />
-                <StatPill label="🔥 Trending Venues" value={data.trendingVenues.toLocaleString()} />
-                <StatPill label="🕒 Updated Just Now" value={data.updatedLabel.replace("Updated ", "")} />
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-white/10 bg-black/25 p-5 backdrop-blur-lg">
-              <p className="text-xs uppercase tracking-[0.28em] text-violet-200/70">Live pulse</p>
-              <p className="mt-3 text-3xl font-semibold text-white">Realtime nightlife operating system</p>
-              <p className="mt-3 text-sm text-white/65">Crowds, stories, events, and friends stay in sync using the existing PartySafari realtime pipeline.</p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Link href="/map" className="rounded-full border border-violet-300/35 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25">Open Live Map</Link>
-                <Link href="/events" className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/12">Browse Events</Link>
-              </div>
-            </div>
-          </div>
-        </section>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.15),transparent_24%),linear-gradient(180deg,#05060b_0%,#090510_48%,#06040a_100%)] px-3 py-4 text-white sm:px-6 sm:py-6">
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
+        <DiscoverHero
+          peopleOutTonight={data.peopleOutTonight}
+          liveEvents={data.liveEvents}
+          activeStories={data.activeStories}
+          trendingVenues={data.trendingVenues}
+          updatedLabel={data.updatedLabel}
+        />
 
         <SectionShell
           eyebrow="🔥 Hot Right Now"
           title="Top venues ranked by Party Score"
           description="Score updates animate live as check-ins, stories, events, and friend activity change."
-          action={<Link href="/map" className="text-sm font-semibold text-violet-200">View map</Link>}
+          action={<SectionLink href="/map">View map</SectionLink>}
         >
-          {data.sectionStates.hotRightNow.error ? <SectionError message={data.sectionStates.hotRightNow.error} /> : null}
-          <div className="grid gap-4 md:grid-cols-2">
-            {data.sectionStates.hotRightNow.loading && data.hotRightNow.length === 0 ? Array.from({ length: 4 }).map((_, index) => <CardSkeleton key={index} />) : null}
-            {!data.sectionStates.hotRightNow.loading && data.hotRightNow.length === 0 ? <p className="text-sm text-white/60">No venues are active yet tonight.</p> : null}
-            {data.hotRightNow.map((venue) => (
-              <VenuePartyCard
-                key={venue.id}
-                venueHref={`/venues/${venue.slug}`}
-                venueName={venue.name}
-                venueType={venue.venueType}
-                imageUrl={venue.imageUrl || venue.photoUrl}
-                city={venue.city}
-                state={venue.state}
-                partyScore={venue.partyScore}
-                currentEvent={venue.currentEvent}
-                currentEntertainment={venue.currentEntertainment}
-                distanceLabel={venue.distanceLabel}
-                friendsHereCount={venue.friendsHereCount}
-                storyCount={venue.storyCount}
-                liveCheckins={venue.liveCheckins}
-                openNow={venue.openNow}
-              />
-            ))}
-          </div>
+          {states.hotRightNow.error ? <SectionError message={states.hotRightNow.error} /> : null}
+          {states.hotRightNow.loading && data.hotRightNow.length === 0 ? (
+            <div className="grid gap-4 md:grid-cols-2">{skeletons(4, CardSkeleton)}</div>
+          ) : null}
+          {!states.hotRightNow.loading && data.hotRightNow.length === 0 ? (
+            <EmptyState
+              icon="🌙"
+              title="The night is still young"
+              message="No venues have lit up yet tonight. Check in somewhere and you will be the first name on the board."
+              action={<SectionLink href="/map">Open Live Map</SectionLink>}
+            />
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {data.hotRightNow.map((venue) => (
+                <VenuePartyCard
+                  key={venue.id}
+                  venueHref={`/venues/${venue.slug}`}
+                  venueName={venue.name}
+                  venueType={venue.venueType}
+                  imageUrl={venue.imageUrl || venue.photoUrl}
+                  city={venue.city}
+                  state={venue.state}
+                  partyScore={venue.partyScore}
+                  currentEvent={venue.currentEvent}
+                  currentEntertainment={venue.currentEntertainment}
+                  distanceLabel={venue.distanceLabel}
+                  friendsHereCount={venue.friendsHereCount}
+                  storyCount={venue.storyCount}
+                  liveCheckins={venue.liveCheckins}
+                  openNow={venue.openNow}
+                />
+              ))}
+            </div>
+          )}
         </SectionShell>
 
         <SectionShell
           eyebrow="🎉 Events Starting Soon"
           title="Beginning within the next 3 hours"
           description="Quick RSVP and venue access without leaving the feed of tonight."
-          action={<Link href="/events" className="text-sm font-semibold text-violet-200">See all events</Link>}
+          action={<SectionLink href="/events">See all events</SectionLink>}
         >
-          {data.sectionStates.eventsStartingSoon.error ? <SectionError message={data.sectionStates.eventsStartingSoon.error} /> : null}
-          {data.sectionStates.eventsStartingSoon.loading && data.eventsStartingSoon.length === 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <CardSkeleton key={index} />
-              ))}
-            </div>
+          {states.eventsStartingSoon.error ? <SectionError message={states.eventsStartingSoon.error} /> : null}
+          {states.eventsStartingSoon.loading && data.eventsStartingSoon.length === 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{skeletons(6, CardSkeleton)}</div>
           ) : null}
-          {!data.sectionStates.eventsStartingSoon.loading && data.eventsStartingSoon.length === 0 ? (
-            <p className="text-sm text-white/60">No events are starting soon right now.</p>
+          {!states.eventsStartingSoon.loading && data.eventsStartingSoon.length === 0 ? (
+            <EmptyState
+              icon="🎟️"
+              title="Nothing kicks off in the next 3 hours"
+              message="The early slot is quiet. Browse everything else on tonight's schedule instead."
+              action={<SectionLink href="/events">Browse Events</SectionLink>}
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {data.eventsStartingSoon.map((event) => (
-                <article key={event.id} className="overflow-hidden rounded-[28px] border border-white/10 bg-black/20">
-                  <div className="relative h-40 bg-[#120824]">
-                    {event.imageUrl || event.venue?.imageUrl || event.venue?.photoUrl ? (
-                      <img src={event.imageUrl || event.venue?.imageUrl || event.venue?.photoUrl || ""} alt={event.title} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center bg-[linear-gradient(135deg,#12061d_0%,#221137_60%,#0b1b33_100%)] text-sm uppercase tracking-[0.28em] text-violet-100/80">Tonight</div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 to-transparent" />
-                    <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-violet-200/75">{event.venue?.name || "Venue"}</p>
-                        <h3 className="mt-1 text-xl font-semibold text-white">{event.title}</h3>
-                      </div>
-                      <div className="rounded-2xl border border-orange-300/25 bg-orange-500/15 px-3 py-2 text-right text-sm font-semibold text-orange-100">
-                        {formatCountdown(event.startTime)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 p-4">
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/75">{event.rsvpCounts.going} RSVPs</span>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/75">{event.friendAttendees.length} friends attending</span>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/75">{event.storyCount} stories</span>
-                    </div>
-                    <p className="text-sm text-white/65">{formatDateLabel(event.startTime)} • {event.performerName || event.eventType || "Lineup TBA"}</p>
-                    <EventRsvpControls eventId={event.id} eventTitle={event.title} compact={true} />
-                    <div className="flex items-center justify-between gap-3">
-                      <Link href={event.venue?.slug ? `/venues/${event.venue.slug}` : "/events"} className="rounded-full border border-violet-300/35 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25">Open Event</Link>
-                      <SavedEventToggle eventId={event.id} />
-                    </div>
-                  </div>
-                </article>
+                <EventStartingSoonCard
+                  key={event.id}
+                  event={event}
+                  countdownLabel={formatCountdown(event.startTime)}
+                  scheduleLabel={formatDateLabel(event.startTime)}
+                />
               ))}
             </div>
           )}
         </SectionShell>
 
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <SectionShell
             eyebrow="👥 Friends Out Tonight"
             title="Grouped by venue, then event"
             description="See where your people already are before you decide the move."
           >
-            {data.sectionStates.friendsOutTonight.error ? <SectionError message={data.sectionStates.friendsOutTonight.error} /> : null}
-            {data.sectionStates.friendsOutTonight.loading && data.friendsOutTonight.length === 0 ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <RowSkeleton key={index} />
-                ))}
-              </div>
+            {states.friendsOutTonight.error ? <SectionError message={states.friendsOutTonight.error} /> : null}
+            {states.friendsOutTonight.loading && data.friendsOutTonight.length === 0 ? (
+              <div className="space-y-3">{skeletons(4, RowSkeleton)}</div>
             ) : null}
-            {!data.sectionStates.friendsOutTonight.loading && data.friendsOutTonight.length === 0 ? (
-              <p className="text-sm text-white/60">No friends are checked in or RSVP'd right now.</p>
+            {!states.friendsOutTonight.loading && data.friendsOutTonight.length === 0 ? (
+              <EmptyState
+                icon="👋"
+                title="Your crew hasn't checked in yet"
+                message="Nobody you follow is out right now. Start the night and they will see you on the board."
+                action={<SectionLink href="/friends">Find Friends</SectionLink>}
+              />
             ) : (
               <div className="space-y-3">
                 {data.friendsOutTonight.map((group) => (
-                  <div key={group.id} className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-semibold text-white">{group.title}</h3>
+                  <div key={group.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-base font-semibold text-white sm:text-lg">{group.title}</h3>
                         <p className="mt-1 text-sm text-white/60">{group.subtitle}</p>
                       </div>
-                      <Link href={group.href} className="text-sm font-semibold text-violet-200">View {group.type === "venue" ? "Venue" : "Event"}</Link>
+                      <SectionLink href={group.href}>View {group.type === "venue" ? "Venue" : "Event"}</SectionLink>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {group.people.map((person) => (
-                        <div key={person.id} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/85">
+                        <span
+                          key={person.id}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/85"
+                        >
                           {person.name}
-                        </div>
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -252,34 +184,53 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
             title="Nearby stories with active rings"
             description="Friend stories surface first, followed by distance and overall activity."
           >
-            {data.sectionStates.liveStories.error ? <SectionError message={data.sectionStates.liveStories.error} /> : null}
+            {states.liveStories.error ? <SectionError message={states.liveStories.error} /> : null}
             <div className="space-y-4">
               <StoryRailSurface />
-              {data.sectionStates.liveStories.loading && data.liveStories.length === 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <CardSkeleton key={index} />
-                  ))}
-                </div>
+              {states.liveStories.loading && data.liveStories.length === 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2">{skeletons(4, CardSkeleton)}</div>
               ) : null}
-              {!data.sectionStates.liveStories.loading && data.liveStories.length === 0 ? (
-                <p className="text-sm text-white/60">No nearby stories are active yet.</p>
+              {!states.liveStories.loading && data.liveStories.length === 0 ? (
+                <EmptyState
+                  icon="📸"
+                  title="No stories in the last hour"
+                  message="Nothing nearby is live yet. Post the first story from wherever you land tonight."
+                />
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {data.liveStories.map((story) => (
-                    <article key={story.id} className="overflow-hidden rounded-[24px] border border-white/10 bg-black/20">
-                      <div className="h-36 bg-[#120824]">
-                        {story.imageUrl ? <img src={story.imageUrl} alt={story.title} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center bg-[linear-gradient(135deg,#10061b_0%,#25123c_55%,#0b1931_100%)] text-sm uppercase tracking-[0.28em] text-violet-100/80">Live Story</div>}
+                    <article key={story.id} className="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                      <div className="h-32 bg-[#120824] sm:h-36">
+                        {story.imageUrl ? (
+                          <img src={story.imageUrl} alt={story.title} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center bg-[linear-gradient(135deg,#10061b_0%,#25123c_55%,#0b1931_100%)] text-xs uppercase tracking-[0.28em] text-violet-100/80">
+                            Live Story
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-2 p-4">
-                        <h3 className="text-lg font-semibold text-white">{story.title}</h3>
+                        <h3 className="text-base font-semibold text-white sm:text-lg">{story.title}</h3>
                         <p className="text-sm text-white/60">{story.subtitle}</p>
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/75">{story.storyCount} stories</span>
-                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/75">{story.distanceLabel}</span>
-                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/75">Activity {story.activityScore}</span>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/75">
+                            {story.storyCount} stories
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/75">
+                            {story.distanceLabel}
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/75">
+                            Activity {story.activityScore}
+                          </span>
                         </div>
-                        {story.venueHref ? <Link href={story.venueHref} className="inline-flex text-sm font-semibold text-violet-200">Open Venue</Link> : null}
+                        {story.venueHref ? (
+                          <Link
+                            href={story.venueHref}
+                            className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-200 hover:text-violet-100"
+                          >
+                            Open Venue
+                          </Link>
+                        ) : null}
                       </div>
                     </article>
                   ))}
@@ -289,38 +240,64 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
           </SectionShell>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
           <SectionShell
             eyebrow="📈 Venues Heating Up"
             title="Momentum movers"
             description="Calculated from live stories, event timing, saved interest, and current traffic."
           >
-            {data.sectionStates.heatingUp.error ? <SectionError message={data.sectionStates.heatingUp.error} /> : null}
-            {data.sectionStates.heatingUp.loading && data.heatingUp.length === 0 ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <RowSkeleton key={index} />
-                ))}
-              </div>
+            {states.heatingUp.error ? <SectionError message={states.heatingUp.error} /> : null}
+            {states.heatingUp.loading && data.heatingUp.length === 0 ? (
+              <div className="space-y-3">{skeletons(4, RowSkeleton)}</div>
             ) : null}
-            {!data.sectionStates.heatingUp.loading && data.heatingUp.length === 0 ? (
-              <p className="text-sm text-white/60">Momentum will appear as live data comes in.</p>
+            {!states.heatingUp.loading && data.heatingUp.length === 0 ? (
+              <EmptyState
+                icon="📈"
+                title="Building Momentum"
+                message="Movers appear here as check-ins, stories, and RSVPs start landing tonight."
+              />
             ) : (
               <div className="space-y-3">
                 {data.heatingUp.map((venue) => {
-                  const safePartyScore = toSafePartyScore(venue.partyScore);
-                  const trend = safePartyScore.trend ?? "stable";
-                  const momentum = safePartyScore.momentum ?? 0;
-                  const score = safePartyScore.score ?? 0;
+                  const score = describePartyScore(venue.partyScore, {
+                    liveCheckins: venue.liveCheckins,
+                    storyCount: venue.storyCount,
+                    friendsHereCount: venue.friendsHereCount,
+                    hasProgrammedEvent: Boolean(venue.currentEvent || venue.currentEntertainment),
+                  });
+                  const momentumTone =
+                    score.trend === "up" ? "text-emerald-200" : score.trend === "down" ? "text-rose-200" : "text-white/80";
+
                   return (
-                    <div key={venue.id} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
-                      <div>
-                        <p className="text-lg font-semibold text-white">{venue.name}</p>
-                        <p className="mt-1 text-sm text-white/60">{venue.currentEvent || venue.currentEntertainment || venue.distanceLabel}</p>
+                    <div
+                      key={venue.id}
+                      className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-semibold text-white sm:text-lg">{venue.name}</p>
+                        <p className="mt-1 truncate text-sm text-white/60">
+                          {venue.currentEvent || venue.currentEntertainment || venue.distanceLabel}
+                        </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-semibold text-emerald-200">{trend === "down" ? "▼" : trend === "stable" ? "■" : "▲"} {momentum > 0 ? "+" : ""}{momentum}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/45">Party Score {score}</p>
+                      <div className="shrink-0 text-right">
+                        {score.showScore ? (
+                          <>
+                            <p className={`text-xl font-semibold tabular-nums sm:text-2xl ${momentumTone}`}>
+                              <span aria-hidden="true">
+                                {score.trend === "down" ? "▼" : score.trend === "stable" ? "■" : "▲"}
+                              </span>{" "}
+                              {score.momentum > 0 ? "+" : ""}
+                              {score.momentum}
+                            </p>
+                            <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                              Party Score {score.score}
+                            </p>
+                          </>
+                        ) : (
+                          <span className="inline-flex rounded-full border border-violet-300/25 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-100">
+                            {score.headline}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -334,25 +311,34 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
             title="Sorted by start time"
             description="DJs, bands, trivia, karaoke, comedy, and live music in one list."
           >
-            {data.sectionStates.liveEntertainment.error ? <SectionError message={data.sectionStates.liveEntertainment.error} /> : null}
-            {data.sectionStates.liveEntertainment.loading && data.liveEntertainment.length === 0 ? (
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <RowSkeleton key={index} />
-                ))}
-              </div>
+            {states.liveEntertainment.error ? <SectionError message={states.liveEntertainment.error} /> : null}
+            {states.liveEntertainment.loading && data.liveEntertainment.length === 0 ? (
+              <div className="space-y-3">{skeletons(5, RowSkeleton)}</div>
             ) : null}
-            {!data.sectionStates.liveEntertainment.loading && data.liveEntertainment.length === 0 ? (
-              <p className="text-sm text-white/60">No live entertainment has been posted yet.</p>
+            {!states.liveEntertainment.loading && data.liveEntertainment.length === 0 ? (
+              <EmptyState
+                icon="🎧"
+                title="No lineups posted yet"
+                message="DJs, bands, karaoke, and comedy show up here the moment venues publish them."
+                action={<SectionLink href="/events">Browse Events</SectionLink>}
+              />
             ) : (
               <div className="space-y-3">
                 {data.liveEntertainment.map((event) => (
-                  <Link key={event.id} href={event.venue?.slug ? `/venues/${event.venue.slug}` : "/events"} className="flex items-center justify-between rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 transition hover:border-violet-300/30">
-                    <div>
-                      <p className="text-lg font-semibold text-white">{event.performerName || event.title}</p>
-                      <p className="mt-1 text-sm text-white/60">{event.venue?.name || "Venue"} • {(event.eventType || "Live Entertainment").replace(/_/g, " ")}</p>
+                  <Link
+                    key={event.id}
+                    href={event.venue?.slug ? `/venues/${event.venue.slug}` : "/events"}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3.5 transition hover:border-violet-300/30"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-semibold text-white sm:text-lg">
+                        {event.performerName || event.title}
+                      </p>
+                      <p className="mt-1 truncate text-sm text-white/60">
+                        {event.venue?.name || "Venue"} • {(event.eventType || "Live Entertainment").replace(/_/g, " ")}
+                      </p>
                     </div>
-                    <div className="text-right text-sm text-white/75">{formatDateLabel(event.startTime)}</div>
+                    <div className="shrink-0 text-right text-sm text-white/75">{formatDateLabel(event.startTime)}</div>
                   </Link>
                 ))}
               </div>
@@ -360,28 +346,32 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
           </SectionShell>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
           <SectionShell
             eyebrow="🍹 Happening Now"
             title="Specials, VIP, and cover signals"
             description="Drink specials and venue offers surfaced from live event and venue data."
           >
-            {data.sectionStates.happeningNow.error ? <SectionError message={data.sectionStates.happeningNow.error} /> : null}
-            {data.sectionStates.happeningNow.loading && data.happeningNow.length === 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <RowSkeleton key={index} />
-                ))}
-              </div>
+            {states.happeningNow.error ? <SectionError message={states.happeningNow.error} /> : null}
+            {states.happeningNow.loading && data.happeningNow.length === 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">{skeletons(4, RowSkeleton)}</div>
             ) : null}
-            {!data.sectionStates.happeningNow.loading && data.happeningNow.length === 0 ? (
-              <p className="text-sm text-white/60">Nothing flagged right now for specials or VIP.</p>
+            {!states.happeningNow.loading && data.happeningNow.length === 0 ? (
+              <EmptyState
+                icon="🍹"
+                title="No specials flagged right now"
+                message="Venues post drink specials, cover, and VIP details here as the night gets going."
+              />
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {data.happeningNow.map((item) => (
-                  <Link key={item.id} href={item.href} className="rounded-[24px] border border-white/10 bg-black/20 p-4 transition hover:border-violet-300/30">
-                    <p className="text-lg font-semibold text-white">{item.title}</p>
-                    <p className="mt-2 text-sm text-white/60">{item.subtitle}</p>
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-violet-300/30"
+                  >
+                    <p className="text-base font-semibold text-white sm:text-lg">{item.title}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-white/60">{item.subtitle}</p>
                   </Link>
                 ))}
               </div>
@@ -393,32 +383,45 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
             title="Personalized tonight"
             description="Recommendations combine social proximity, history, genre patterns, story activity, and venue trend."
           >
-            {data.sectionStates.recommendations.error ? <SectionError message={data.sectionStates.recommendations.error} /> : null}
-            {data.sectionStates.recommendations.loading && data.recommendations.length === 0 ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <RowSkeleton key={index} />
-                ))}
-              </div>
+            {states.recommendations.error ? <SectionError message={states.recommendations.error} /> : null}
+            {states.recommendations.loading && data.recommendations.length === 0 ? (
+              <div className="space-y-3">{skeletons(4, RowSkeleton)}</div>
             ) : null}
-            {!data.sectionStates.recommendations.loading && data.recommendations.length === 0 ? (
-              <p className="text-sm text-white/60">Use RSVPs, saves, and check-ins to teach PartySafari your taste.</p>
+            {!states.recommendations.loading && data.recommendations.length === 0 ? (
+              <EmptyState
+                icon="⭐"
+                title="Teach PartySafari your taste"
+                message="RSVP, save, and check in a few times tonight and your personalized picks start showing up here."
+              />
             ) : (
               <div className="space-y-3">
                 {data.recommendations.map((entry) => {
-                  const safePartyScore = toSafePartyScore(entry.venue.partyScore);
+                  const score = describePartyScore(entry.venue.partyScore, {
+                    liveCheckins: entry.venue.liveCheckins,
+                    storyCount: entry.venue.storyCount,
+                    friendsHereCount: entry.venue.friendsHereCount,
+                    hasProgrammedEvent: Boolean(entry.venue.currentEvent || entry.venue.currentEntertainment),
+                  });
+
                   return (
-                    <div key={entry.id} className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-lg font-semibold text-white">{entry.venue.name}</p>
-                          <p className="mt-1 text-sm text-white/60">Party Score {safePartyScore.score ?? 0} • {entry.venue.distanceLabel}</p>
+                    <div key={entry.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-semibold text-white sm:text-lg">{entry.venue.name}</p>
+                          <p className="mt-1 text-sm text-white/60">
+                            {score.showScore ? `Party Score ${score.score}` : score.headline} • {entry.venue.distanceLabel}
+                          </p>
                         </div>
-                        <Link href={`/venues/${entry.venue.slug}`} className="text-sm font-semibold text-violet-200">Open Venue</Link>
+                        <SectionLink href={`/venues/${entry.venue.slug}`}>Open Venue</SectionLink>
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {entry.reasons.map((reason) => (
-                          <span key={reason} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80">{reason}</span>
+                          <span
+                            key={reason}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80"
+                          >
+                            {reason}
+                          </span>
                         ))}
                       </div>
                     </div>
