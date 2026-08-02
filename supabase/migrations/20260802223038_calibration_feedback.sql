@@ -27,17 +27,17 @@ create table if not exists public.calibration_feedback (
 
 alter table public.calibration_feedback enable row level security;
 
-create policy if not exists calibration_feedback_select_own
+create policy calibration_feedback_select_own
   on public.calibration_feedback
   for select
   using (auth.uid() = profile_id);
 
-create policy if not exists calibration_feedback_insert_own
+create policy calibration_feedback_insert_own
   on public.calibration_feedback
   for insert
   with check (auth.uid() = profile_id);
 
-create policy if not exists calibration_feedback_update_own
+create policy calibration_feedback_update_own
   on public.calibration_feedback
   for update
   using (auth.uid() = profile_id)
