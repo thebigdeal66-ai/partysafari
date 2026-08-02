@@ -13,7 +13,7 @@ import {
 import { buildPartyScoreFromSignals, type PartyScoreSignals } from "@/lib/partyScore";
 import { explainVenue } from "@/lib/psi";
 import { CROWD_THRESHOLDS } from "@/lib/venueCheckInUtils";
-import { FEATURE_FLAG_DEFAULTS, isFeatureEnabled } from "@/lib/featureFlags";
+import { FEATURE_FLAG_DEFAULTS, isFeatureEnabled, isFeatureEnabledForViewer } from "@/lib/featureFlags";
 
 /**
  * Run with `npm test`. `discoverIntelligence` is pure by design — no React, no
@@ -743,4 +743,47 @@ test("the aiDiscoverCards flag ships off", () => {
 test("adding the new flag did not turn Crowd Pulse on", () => {
   assert.equal(FEATURE_FLAG_DEFAULTS.crowdPulse, false);
   assert.equal(isFeatureEnabled("crowdPulse"), false);
+});
+
+test("the two flags are independent, so AI Discover can be on while Crowd Pulse is not", () => {
+  const founder = "02ed8330-6ca7-4cf0-ab16-52f1b4feaa8f";
+  const previous = process.env.NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_PROFILE_IDS;
+  process.env.NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_PROFILE_IDS = founder;
+
+  try {
+    assert.equal(isFeatureEnabledForViewer("aiDiscoverCards", { profileId: founder }), true);
+    // Granting one flag says nothing about the other.
+    assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: founder }), false);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_PROFILE_IDS;
+    } else {
+      process.env.NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_PROFILE_IDS = previous;
+    }
+  }
+});
+
+test("that combination still builds a full set of cards, from venue signals alone", () => {
+  // What `useAiDiscoverCards` passes when `useCrowdPulse` returns an empty
+  // reading because the pulse flag is off for this viewer: every venue arrives
+  // with no level and no trend.
+  const unpulsed: DiscoverIntelligenceVenue[] = [
+    { ...explodingVenue("a"), crowdPulseLevel: null, crowdPulseTrend: null },
+    venue("b", { signals: { friendPresence: 3, liveCheckins: 5 } }),
+    venue("c", { signals: { liveCheckins: 9, litSignals: 4, storyReactions: 10 } }),
+    venue("d", { signals: {} }),
+  ];
+
+  const result = buildDiscoverCards(unpulsed);
+
+  assert.equal(result.crowdPulseAvailable, false);
+  // All six cards are present so the surface does not reflow, and every venue
+  // is still placed or explicitly unclassified — nothing is dropped.
+  assert.equal(result.cards.length, 6);
+  const placed = result.cards.flatMap((card) => card.venues.map((entry) => entry.venueId));
+  assert.equal(new Set([...placed, ...result.unclassified]).size, unpulsed.length);
+  for (const entry of result.cards.flatMap((card) => card.venues)) {
+    assert.equal(entry.crowdPulseCorroborated, false);
+    assert.ok(entry.categoryReason.length > 0, "a card entry still says why it is there");
+  }
 });

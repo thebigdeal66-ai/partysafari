@@ -18,10 +18,40 @@
 import Link from "next/link";
 import { memo } from "react";
 import WhyThisVenue from "@/components/discover/WhyThisVenue";
+import FounderCalibrationControl, {
+  type FounderCalibrationTarget,
+} from "@/components/discover/FounderCalibrationControl";
 import { SectionShell } from "@/components/discover/DiscoverSection";
+import type { AiDiscoverCalibration } from "@/hooks/useAiDiscoverCards";
 import type { DiscoverCard, DiscoverCardVenue } from "@/lib/discoverIntelligence";
 
-function CardEntry({ venue }: { venue: DiscoverCardVenue }) {
+/**
+ * Which judgments this viewer may record about this venue. Empty for everyone
+ * who is not an approved tester, which is what keeps the control out of the
+ * public render tree entirely.
+ */
+function calibrationTargets(
+  venueId: string,
+  calibration: AiDiscoverCalibration | undefined
+): FounderCalibrationTarget[] {
+  if (!calibration) {
+    return [];
+  }
+
+  const targets: FounderCalibrationTarget[] = [];
+  if (calibration.cardsApproved) {
+    targets.push({ feature: "aiDiscoverCards", label: "Card" });
+  }
+  // Only offered when a pulse level actually reached the screen — there is
+  // nothing to judge about a reading that was never shown.
+  if (calibration.crowdPulseApproved && calibration.contextByVenueId[venueId]?.crowdPulseLevel) {
+    targets.push({ feature: "crowdPulse", label: "Pulse" });
+  }
+  return targets;
+}
+
+function CardEntry({ venue, calibration }: { venue: DiscoverCardVenue; calibration?: AiDiscoverCalibration }) {
+  const targets = calibrationTargets(venue.venueId, calibration);
   const heading = venue.slug ? (
     <Link
       href={`/venues/${venue.slug}`}
@@ -51,11 +81,20 @@ function CardEntry({ venue }: { venue: DiscoverCardVenue }) {
       ) : null}
 
       <WhyThisVenue explanation={venue.explanation} className="mt-2" />
+
+      {calibration ? (
+        <FounderCalibrationControl
+          targets={targets}
+          onSubmit={(feature, judgment) =>
+            calibration.submit(feature, venue.venueId, { ...judgment, recommendationCategory: venue.category })
+          }
+        />
+      ) : null}
     </li>
   );
 }
 
-function IntelligenceCard({ card }: { card: DiscoverCard }) {
+function IntelligenceCard({ card, calibration }: { card: DiscoverCard; calibration?: AiDiscoverCalibration }) {
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
       <header className="min-w-0">
@@ -71,7 +110,7 @@ function IntelligenceCard({ card }: { card: DiscoverCard }) {
       ) : (
         <ul className="mt-3 flex flex-col gap-2">
           {card.venues.map((venue) => (
-            <CardEntry key={venue.venueId} venue={venue} />
+            <CardEntry key={venue.venueId} venue={venue} calibration={calibration} />
           ))}
         </ul>
       )}
@@ -83,11 +122,14 @@ export type AiDiscoverCardsProps = {
   cards: DiscoverCard[];
   /** Rendered as a footnote so the absence of Crowd Pulse is stated, not hidden. */
   crowdPulseAvailable?: boolean;
+  /** Omitted for every account that is not an approved calibration tester. */
+  calibration?: AiDiscoverCalibration;
 };
 
 const AiDiscoverCards = memo(function AiDiscoverCards({
   cards,
   crowdPulseAvailable = false,
+  calibration,
 }: AiDiscoverCardsProps) {
   if (cards.length === 0) {
     return null;
@@ -101,7 +143,7 @@ const AiDiscoverCards = memo(function AiDiscoverCards({
     >
       <div className="grid min-w-0 gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => (
-          <IntelligenceCard key={card.id} card={card} />
+          <IntelligenceCard key={card.id} card={card} calibration={calibration} />
         ))}
       </div>
 

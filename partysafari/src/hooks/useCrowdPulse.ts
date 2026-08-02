@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { logSupabaseQueryError, normalizeUnknownError } from "@/lib/supabaseDiagnostics";
 import { fetchVenueLitStates } from "@/lib/litEngine";
-import { isFeatureEnabled } from "@/lib/featureFlags";
+import { isFeatureEnabledForViewer, type FeatureViewerContext } from "@/lib/featureFlags";
 import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 import {
   anonymizeContributor,
@@ -49,8 +49,9 @@ import type {
  * uncalibrated reference constant (see `CROWD_PULSE_CONFIG.intensityReference`),
  * so while `crowdPulse` is off this hook fetches nothing and returns
  * `emptyCrowdPulse` regardless of what a caller passes for `enabled`. There is
- * no way to reach a real reading from a surface without flipping the flag at
- * deploy time.
+ * no way to reach a real reading from a surface without the flag granting the
+ * viewer access at deploy time — either globally, or by naming their profile in
+ * the calibration allowlist.
  */
 
 /** Long enough that a screen full of consumers costs one round trip, short enough to still read as "now". */
@@ -76,6 +77,12 @@ export type UseCrowdPulseOptions = {
   /** Off by default. Set only on a surface that is actually rendering the pulse. */
   pollIntervalMs?: number;
   config?: Partial<CrowdPulseConfig>;
+  /**
+   * Who is looking, so the flag can be on for an approved tester while the
+   * global default stays off. Omitted means "nobody in particular", which
+   * resolves to the global default alone.
+   */
+  viewer?: FeatureViewerContext;
 };
 
 export type UseCrowdPulseResult = {
@@ -355,7 +362,9 @@ async function loadCrowdPulseRead(
 
 export function useCrowdPulse(options: UseCrowdPulseOptions): UseCrowdPulseResult {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
-  const flagEnabled = isFeatureEnabled("crowdPulse");
+  const viewerProfileId = options.viewer?.profileId ?? null;
+  const viewerCity = options.viewer?.city ?? null;
+  const flagEnabled = isFeatureEnabledForViewer("crowdPulse", { profileId: viewerProfileId, city: viewerCity });
   const enabled = flagEnabled && (options.enabled ?? true) === true;
   const pollIntervalMs = options.pollIntervalMs ?? 0;
 
