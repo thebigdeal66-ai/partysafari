@@ -10,6 +10,9 @@ subscriptions. The rules below are not style preferences. They are load-bearing.
 Human contributors should read [`CONTRIBUTING.md`](./CONTRIBUTING.md) and
 [`MASTERPLAN.md`](./MASTERPLAN.md) too. Agents must read all three.
 
+For the complete agent governance policy, also read [`AI_AGENT_RULES.md`](./AI_AGENT_RULES.md).
+The Copilot-specific summary lives in [`.github/copilot-instructions.md`](./.github/copilot-instructions.md).
+
 ---
 
 ## 1. Project Boundaries
