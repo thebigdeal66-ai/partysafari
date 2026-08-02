@@ -54,10 +54,137 @@ function readFlagEnv(flag: FeatureFlag): string | undefined {
   }
 }
 
+function readProfileIdsEnv(flag: FeatureFlag): string | undefined {
+  switch (flag) {
+    case "crowdPulse":
+      return process.env.NEXT_PUBLIC_FEATURE_CROWD_PULSE_PROFILE_IDS;
+    case "aiDiscoverCards":
+      return process.env.NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_PROFILE_IDS;
+  }
+}
+
+function readCityEnv(flag: FeatureFlag): string | undefined {
+  switch (flag) {
+    case "crowdPulse":
+      return process.env.NEXT_PUBLIC_FEATURE_CROWD_PULSE_CITY;
+    case "aiDiscoverCards":
+      return process.env.NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_CITY;
+  }
+}
+
+export type FeatureTargetingConfig = {
+  approvedProfileIds: ReadonlySet<string>;
+  approvedCity: string | null;
+};
+
+export type FeatureViewerContext = {
+  profileId?: string | null;
+  city?: string | null;
+};
+
+export type FeatureGrant = "global" | "profileAllowlist" | "cityAllowlist" | "none";
+
+export type FeatureAccess = {
+  enabled: boolean;
+  grant: FeatureGrant;
+};
+
+const EMPTY_TARGETING: FeatureTargetingConfig = {
+  approvedProfileIds: new Set<string>(),
+  approvedCity: null,
+};
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TRUTHY_ENV_VALUES = ["1", "true", "on", "yes"];
+
+export function parseApprovedProfileIds(raw: string | undefined | null): ReadonlySet<string> {
+  if (typeof raw !== "string") {
+    return EMPTY_TARGETING.approvedProfileIds;
+  }
+
+  const entries = raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (entries.length === 0) {
+    return EMPTY_TARGETING.approvedProfileIds;
+  }
+
+  const approved = new Set<string>();
+  for (const entry of entries) {
+    if (!UUID_PATTERN.test(entry)) {
+      return EMPTY_TARGETING.approvedProfileIds;
+    }
+    approved.add(entry.toLowerCase());
+  }
+
+  return approved;
+}
+
+export function parseApprovedCity(raw: string | undefined | null): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function readFeatureTargetingConfig(flag: FeatureFlag): FeatureTargetingConfig {
+  return {
+    approvedProfileIds: parseApprovedProfileIds(readProfileIdsEnv(flag)),
+    approvedCity: parseApprovedCity(readCityEnv(flag)),
+  };
+}
+
+export function hasTargetingConfigured(flag: FeatureFlag): boolean {
+  const config = readFeatureTargetingConfig(flag);
+  return config.approvedProfileIds.size > 0 || config.approvedCity !== null;
+}
+
+export function hasCityTargetingConfigured(flag: FeatureFlag): boolean {
+  return readFeatureTargetingConfig(flag).approvedCity !== null;
+}
+
 export function isFeatureEnabled(flag: FeatureFlag): boolean {
   const raw = readFlagEnv(flag);
   if (typeof raw !== "string" || raw.trim().length === 0) {
     return FEATURE_FLAG_DEFAULTS[flag];
   }
-  return ["1", "true", "on", "yes"].includes(raw.trim().toLowerCase());
+  return TRUTHY_ENV_VALUES.includes(raw.trim().toLowerCase());
+}
+
+export function resolveFeatureAccess(input: {
+  globalEnabled: boolean;
+  config: FeatureTargetingConfig;
+  viewer: FeatureViewerContext;
+}): FeatureAccess {
+  if (input.globalEnabled) {
+    return { enabled: true, grant: "global" };
+  }
+
+  const profileId = typeof input.viewer.profileId === "string" ? input.viewer.profileId.trim().toLowerCase() : "";
+  if (profileId.length > 0 && input.config.approvedProfileIds.has(profileId)) {
+    return { enabled: true, grant: "profileAllowlist" };
+  }
+
+  const approvedCity = input.config.approvedCity;
+  const viewerCity = typeof input.viewer.city === "string" ? input.viewer.city.trim().toLowerCase() : "";
+  if (approvedCity !== null && profileId.length > 0 && viewerCity === approvedCity) {
+    return { enabled: true, grant: "cityAllowlist" };
+  }
+
+  return { enabled: false, grant: "none" };
+}
+
+export function isApprovedTester(flag: FeatureFlag, viewer: FeatureViewerContext): boolean {
+  const access = resolveFeatureAccess({
+    globalEnabled: isFeatureEnabled(flag),
+    config: readFeatureTargetingConfig(flag),
+    viewer,
+  });
+  return access.enabled;
+}
+
+export function isFeatureEnabledForViewer(flag: FeatureFlag, viewer: FeatureViewerContext): boolean {
+  return isApprovedTester(flag, viewer);
 }
