@@ -28,6 +28,18 @@ export const CALIBRATION_FEEDBACK_TABLE = "calibration_feedback";
 /** Mirrors the `calibration_feedback_note_length_check` CHECK in db/021. */
 export const CALIBRATION_NOTE_MAX_LENGTH = 500;
 
+/** Mirrors `calibration_feedback_recommendation_category_length_check` in db/021. */
+export const CALIBRATION_RECOMMENDATION_CATEGORY_MAX_LENGTH = 64;
+
+/** Mirrors `calibration_feedback_displayed_psi_label_length_check` in db/021. */
+export const CALIBRATION_DISPLAYED_PSI_LABEL_MAX_LENGTH = 120;
+
+/** Mirrors `calibration_feedback_reason_codes_count_check` in db/021. */
+export const CALIBRATION_REASON_CODES_MAX_ENTRIES = 10;
+
+/** Mirrors `calibration_feedback_reason_codes_serialized_length_check` in db/021. */
+export const CALIBRATION_REASON_CODES_SERIALIZED_MAX_LENGTH = 640;
+
 /** Mirrors the `calibration_feedback_feature_check` CHECK in db/021. */
 export const CALIBRATION_FEATURES = ["crowdPulse", "aiDiscoverCards"] as const;
 
@@ -126,6 +138,27 @@ export function buildCalibrationFeedbackRow(
 export function validateCalibrationFeedbackRow(row: CalibrationFeedbackRow): string | null {
   if (!CALIBRATION_FEATURES.includes(row.feature)) {
     return "Unknown calibration feature.";
+  }
+  if (
+    row.recommendation_category !== null &&
+    row.recommendation_category.length > CALIBRATION_RECOMMENDATION_CATEGORY_MAX_LENGTH
+  ) {
+    return `Category labels must stay under ${CALIBRATION_RECOMMENDATION_CATEGORY_MAX_LENGTH} characters.`;
+  }
+  if (
+    row.displayed_psi_label !== null &&
+    row.displayed_psi_label.length > CALIBRATION_DISPLAYED_PSI_LABEL_MAX_LENGTH
+  ) {
+    return `PSI labels must stay under ${CALIBRATION_DISPLAYED_PSI_LABEL_MAX_LENGTH} characters.`;
+  }
+  if (row.reason_codes !== null && row.reason_codes.length > CALIBRATION_REASON_CODES_MAX_ENTRIES) {
+    return `Use at most ${CALIBRATION_REASON_CODES_MAX_ENTRIES} reason codes.`;
+  }
+  if (
+    row.reason_codes !== null &&
+    `{${row.reason_codes.join(",")}}`.length > CALIBRATION_REASON_CODES_SERIALIZED_MAX_LENGTH
+  ) {
+    return `Reason code payload must stay under ${CALIBRATION_REASON_CODES_SERIALIZED_MAX_LENGTH} characters.`;
   }
   if (row.note !== null && row.note.length > CALIBRATION_NOTE_MAX_LENGTH) {
     return `Keep the note under ${CALIBRATION_NOTE_MAX_LENGTH} characters.`;

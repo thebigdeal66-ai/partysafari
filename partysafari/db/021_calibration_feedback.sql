@@ -103,6 +103,14 @@ END $$;
 -- The note CHECK is a length bound, not validation. 500 characters is a sentence or two of
 -- context — enough to say "packed but the pulse said quiet", not enough to become a free-form
 -- field that accumulates whatever someone happens to type about other people.
+--
+-- `recommendation_category` and `displayed_psi_label` stay plain text instead of enums because
+-- the product vocabulary is expected to evolve as calibration sharpens naming. We bound length,
+-- not value set, so this table stays future-compatible without becoming an unbounded text sink.
+--
+-- `reason_codes` is constrained two ways: max 10 entries, and max 640 chars once serialized
+-- (`reason_codes::text`). The count cap prevents "small-token spam" and the serialized cap
+-- prevents a few very large values from quietly turning this field into a payload channel.
 CREATE TABLE IF NOT EXISTS public.calibration_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -118,6 +126,14 @@ CREATE TABLE IF NOT EXISTS public.calibration_feedback (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT calibration_feedback_feature_check
     CHECK (feature IN ('crowdPulse', 'aiDiscoverCards')),
+  CONSTRAINT calibration_feedback_recommendation_category_length_check
+    CHECK (recommendation_category IS NULL OR char_length(recommendation_category) <= 64),
+  CONSTRAINT calibration_feedback_displayed_psi_label_length_check
+    CHECK (displayed_psi_label IS NULL OR char_length(displayed_psi_label) <= 120),
+  CONSTRAINT calibration_feedback_reason_codes_count_check
+    CHECK (reason_codes IS NULL OR cardinality(reason_codes) <= 10),
+  CONSTRAINT calibration_feedback_reason_codes_serialized_length_check
+    CHECK (reason_codes IS NULL OR char_length(reason_codes::text) <= 640),
   CONSTRAINT calibration_feedback_note_length_check
     CHECK (note IS NULL OR char_length(note) <= 500)
 );
@@ -158,6 +174,46 @@ BEGIN
       ADD CONSTRAINT calibration_feedback_note_length_check
       CHECK (note IS NULL OR char_length(note) <= 500);
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'calibration_feedback_recommendation_category_length_check'
+       AND conrelid = 'public.calibration_feedback'::regclass
+  ) THEN
+    ALTER TABLE public.calibration_feedback
+      ADD CONSTRAINT calibration_feedback_recommendation_category_length_check
+      CHECK (recommendation_category IS NULL OR char_length(recommendation_category) <= 64);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'calibration_feedback_displayed_psi_label_length_check'
+       AND conrelid = 'public.calibration_feedback'::regclass
+  ) THEN
+    ALTER TABLE public.calibration_feedback
+      ADD CONSTRAINT calibration_feedback_displayed_psi_label_length_check
+      CHECK (displayed_psi_label IS NULL OR char_length(displayed_psi_label) <= 120);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'calibration_feedback_reason_codes_count_check'
+       AND conrelid = 'public.calibration_feedback'::regclass
+  ) THEN
+    ALTER TABLE public.calibration_feedback
+      ADD CONSTRAINT calibration_feedback_reason_codes_count_check
+      CHECK (reason_codes IS NULL OR cardinality(reason_codes) <= 10);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'calibration_feedback_reason_codes_serialized_length_check'
+       AND conrelid = 'public.calibration_feedback'::regclass
+  ) THEN
+    ALTER TABLE public.calibration_feedback
+      ADD CONSTRAINT calibration_feedback_reason_codes_serialized_length_check
+      CHECK (reason_codes IS NULL OR char_length(reason_codes::text) <= 640);
+  END IF;
 END $$;
 
 -- ---------------------------------------------------------------------------
@@ -169,7 +225,8 @@ END $$;
 --   "every judgment for this feature, newest first"  -> (feature, created_at DESC)
 --   "every judgment about this venue, newest first"  -> (venue_id, created_at DESC)
 --
--- The own-rows-only SELECT policy filters on `profile_id`, so that column gets its own index too.
+-- Service-role analysis often groups by founder and orders recent-first, so `profile_id` gets its
+-- own index too.
 -- The table is expected to hold hundreds of rows, not millions; these exist so the aggregate reads
 -- stay sequential-scan-free as the calibration window runs, not because throughput is a concern.
 CREATE INDEX IF NOT EXISTS idx_calibration_feedback_feature_recent
@@ -200,15 +257,9 @@ CREATE POLICY "Testers can insert their own calibration feedback"
   TO authenticated
   WITH CHECK (auth.uid() = profile_id);
 
--- Read is own-rows-only so a tester can audit what they submitted. There is deliberately NO
--- broader "authenticated can read all" policy: cross-row reads are the analysis path, and the
--- analysis path is not the client.
+-- Deliberately NO SELECT policy. Calibration telemetry remains private to the administrative
+-- analysis path until a dedicated dashboard is intentionally built.
 DROP POLICY IF EXISTS "Testers can read their own calibration feedback" ON public.calibration_feedback;
-CREATE POLICY "Testers can read their own calibration feedback"
-  ON public.calibration_feedback
-  FOR SELECT
-  TO authenticated
-  USING (auth.uid() = profile_id);
 
 -- No UPDATE and no DELETE policy, matching `venue_lit_signals`. Judgments are an audit trail of
 -- what somebody believed at a moment in the night; a revised opinion is a new row with a later
@@ -235,11 +286,11 @@ CREATE POLICY "Testers can read their own calibration feedback"
 -- reaches.
 --
 -- `anon` is granted nothing at all — no SELECT and no INSERT — so an anonymous request is refused
--- by table privileges before RLS is even consulted. `authenticated` gets SELECT and INSERT only;
+-- by table privileges before RLS is even consulted. `authenticated` gets INSERT only; SELECT,
 -- UPDATE and DELETE are withheld at the privilege level as well as the policy level, so the
 -- immutability above holds even if a permissive policy is ever added by mistake.
 REVOKE ALL ON public.calibration_feedback FROM anon;
-GRANT SELECT, INSERT ON public.calibration_feedback TO authenticated;
+GRANT INSERT ON public.calibration_feedback TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Realtime

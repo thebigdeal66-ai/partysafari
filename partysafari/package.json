@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsc -p tsconfig.test.json && node --require ./scripts/test-alias.js --test .test-build"
+    "test": "tsc -p tsconfig.test.json && node --require ./scripts/test-alias.js --test .test-build/lib/**/*.test.js",
+    "sql:validate:021": "./scripts/run-disposable-postgres-sql.sh scripts/sql/021_calibration_feedback_syntax_validation.sql",
+    "sql:test:021": "./scripts/run-disposable-postgres-sql.sh scripts/sql/021_calibration_feedback_rls_tests.sql"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CALIBRATION_FEATURES,
+  CALIBRATION_DISPLAYED_PSI_LABEL_MAX_LENGTH,
   CALIBRATION_NOTE_MAX_LENGTH,
+  CALIBRATION_REASON_CODES_MAX_ENTRIES,
+  CALIBRATION_REASON_CODES_SERIALIZED_MAX_LENGTH,
+  CALIBRATION_RECOMMENDATION_CATEGORY_MAX_LENGTH,
   buildCalibrationFeedbackRow,
   submitCalibrationFeedback,
   validateCalibrationFeedbackRow,
@@ -227,6 +231,66 @@ test("validation mirrors the CHECK constraints in db/021", () => {
   );
   assert.notEqual(
     validateCalibrationFeedbackRow({ ...base, note: "x".repeat(CALIBRATION_NOTE_MAX_LENGTH + 1) }),
+    null
+  );
+
+  assert.equal(
+    validateCalibrationFeedbackRow({
+      ...base,
+      recommendation_category: "x".repeat(CALIBRATION_RECOMMENDATION_CATEGORY_MAX_LENGTH),
+    }),
+    null
+  );
+  assert.notEqual(
+    validateCalibrationFeedbackRow({
+      ...base,
+      recommendation_category: "x".repeat(CALIBRATION_RECOMMENDATION_CATEGORY_MAX_LENGTH + 1),
+    }),
+    null
+  );
+
+  assert.equal(
+    validateCalibrationFeedbackRow({ ...base, displayed_psi_label: "x".repeat(CALIBRATION_DISPLAYED_PSI_LABEL_MAX_LENGTH) }),
+    null
+  );
+  assert.notEqual(
+    validateCalibrationFeedbackRow({
+      ...base,
+      displayed_psi_label: "x".repeat(CALIBRATION_DISPLAYED_PSI_LABEL_MAX_LENGTH + 1),
+    }),
+    null
+  );
+
+  assert.equal(
+    validateCalibrationFeedbackRow({
+      ...base,
+      reason_codes: Array.from({ length: CALIBRATION_REASON_CODES_MAX_ENTRIES }, (_, i) => `reason_${i + 1}`),
+    }),
+    null
+  );
+  assert.notEqual(
+    validateCalibrationFeedbackRow({
+      ...base,
+      reason_codes: Array.from({ length: CALIBRATION_REASON_CODES_MAX_ENTRIES + 1 }, (_, i) => `reason_${i + 1}`),
+    }),
+    null
+  );
+
+  assert.notEqual(
+    validateCalibrationFeedbackRow({
+      ...base,
+      reason_codes: ["x".repeat(CALIBRATION_REASON_CODES_SERIALIZED_MAX_LENGTH)],
+    }),
+    null
+  );
+
+  assert.equal(
+    validateCalibrationFeedbackRow({
+      ...base,
+      recommendation_category: null,
+      displayed_psi_label: null,
+      reason_codes: null,
+    }),
     null
   );
 
