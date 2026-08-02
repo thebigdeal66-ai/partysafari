@@ -77,6 +77,14 @@ export type DiscoverVenueCardData = DiscoverVenue & {
   psiExplanation: PsiExplanation;
   currentEvent: string | null;
   currentEntertainment: string | null;
+  /**
+   * Lowercased `events.event_type` for the events actually running at this
+   * venue now. Real rows only — surfaces that key off programming (AI Discover
+   * Cards) read this rather than guessing from the venue's genre tags.
+   */
+  liveEventTypes: string[];
+  /** Performer or title of the running event, for surfaces that name it. */
+  liveEventTitle: string | null;
   distanceMiles: number | null;
   distanceLabel: string;
   liveCheckins: number;
@@ -142,6 +150,14 @@ type DiscoverState = {
   trendingVenues: number;
   hotRightNow: DiscoverVenueCardData[];
   heatingUp: DiscoverVenueCardData[];
+  /**
+   * Every loaded venue, score-sorted and unsliced. `hotRightNow` is the top of
+   * this list; surfaces that classify rather than rank — the AI Discover Cards
+   * look for hidden gems and out-of-town venues, which by definition are not at
+   * the top — need the whole population, and re-deriving it would mean a second
+   * copy of the composition above.
+   */
+  venueCards: DiscoverVenueCardData[];
   eventsStartingSoon: DiscoverEvent[];
   friendsOutTonight: DiscoverFriendGroup[];
   liveStories: DiscoverStorySpotlight[];
@@ -755,6 +771,11 @@ export function useDiscoverTonightData(): DiscoverState {
 
         const currentEvent = primaryEvent?.title || null;
         const currentEntertainment = primaryEvent?.performerName || primaryEvent?.eventType || null;
+        const runningEvents = venueEvents.filter((event) => event.isNow);
+        const liveEventTypes = runningEvents
+          .map((event) => (event.eventType || "").trim().toLowerCase())
+          .filter((type) => type.length > 0);
+        const runningEvent = runningEvents[0] || null;
 
         return {
           ...venue,
@@ -767,6 +788,8 @@ export function useDiscoverTonightData(): DiscoverState {
           }),
           currentEvent,
           currentEntertainment,
+          liveEventTypes,
+          liveEventTitle: runningEvent?.performerName || runningEvent?.title || null,
           distanceMiles,
           distanceLabel: formatDistanceLabel(distanceMiles),
           liveCheckins,
@@ -931,6 +954,7 @@ export function useDiscoverTonightData(): DiscoverState {
       activeStories: storyState.stories.length,
       trendingVenues: hotRightNow.filter((venue) => (venue.partyScore?.trend ?? "stable") === "up").length,
       hotRightNow: hotRightNow.slice(0, 8),
+      venueCards: hotRightNow,
       heatingUp: [...hotRightNow]
         .sort((left, right) => {
           const rightScore = toSafePartyScore(right.partyScore);
@@ -1001,6 +1025,7 @@ export function useDiscoverTonightData(): DiscoverState {
     activeStories: derived.activeStories,
     trendingVenues: derived.trendingVenues,
     hotRightNow: derived.hotRightNow,
+    venueCards: derived.venueCards,
     heatingUp: derived.heatingUp,
     eventsStartingSoon: derived.eventsStartingSoon,
     friendsOutTonight: derived.friendsOutTonight,
