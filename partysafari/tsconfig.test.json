@@ -10,6 +10,10 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src/lib/**/*.ts"],
+  "include": [
+    "src/lib/**/*.ts",
+    "src/components/discover/FounderCalibrationControl.tsx",
+    "src/components/discover/*.test.ts"
+  ],
   "exclude": ["node_modules"]
 }

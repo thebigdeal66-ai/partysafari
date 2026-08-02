@@ -9,23 +9,32 @@
  * cards cost zero extra round trips and cannot disagree with the venue cards
  * rendered beside them.
  *
- * Two flags gate it, independently:
+ * Two flags gate it, independently, and each resolves against the viewer rather
+ * than globally — so the Founder can hold either one on while both stay off for
+ * everyone else:
  *
  * - `aiDiscoverCards` decides whether the cards exist at all. Off by default;
  *   when off the hook returns `enabled: false` and an empty result, and the
  *   surface renders nothing.
  * - `crowdPulse` decides whether Crowd Pulse corroboration is available.
  *   `useCrowdPulse` enforces that one itself, returning an empty reading when
- *   the flag is off, which lands here as venues with no pulse level. That is a
- *   normal degraded read, not an error: the model treats corroboration as a
- *   priority nudge, so ordering shifts slightly and classification does not
- *   change.
+ *   the flag is off *for this viewer*, which lands here as venues with no pulse
+ *   level. That is a normal degraded read, not an error: the model treats
+ *   corroboration as a priority nudge, so ordering shifts slightly and
+ *   classification does not change. Cards therefore render from Party Score and
+ *   PSI alone when AI Discover is on for someone and Crowd Pulse is not.
  */
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useCrowdPulse } from "@/hooks/useCrowdPulse";
+import { useViewerFeatureContext } from "@/hooks/useViewerFeatureContext";
 import type { DiscoverVenueCardData } from "@/hooks/useDiscoverTonightData";
-import { isFeatureEnabled } from "@/lib/featureFlags";
+import { isApprovedTester, isFeatureEnabledForViewer } from "@/lib/featureFlags";
+import {
+  submitCalibrationFeedback,
+  type CalibrationFeature,
+  type CalibrationSubmitOutcome,
+} from "@/lib/calibrationFeedback";
 import {
   buildDiscoverCards,
   type DiscoverIntelligenceResult,
@@ -33,12 +42,34 @@ import {
 } from "@/lib/discoverIntelligence";
 import type { CrowdPulseLevel, CrowdPulseTrend } from "@/lib/crowdPulseTypes";
 
+/** What was on screen for one venue, so a judgment can be recorded against it. */
+export type CalibrationVenueContext = {
+  partyScore: number | null;
+  psiLabel: string | null;
+  crowdPulseLevel: CrowdPulseLevel | null;
+  reasonCodes: string[];
+};
+
+export type AiDiscoverCalibration = {
+  /** Approved tester for the cards themselves. False for a plain global rollout. */
+  cardsApproved: boolean;
+  /** Approved tester for Crowd Pulse, judged separately because the flags are independent. */
+  crowdPulseApproved: boolean;
+  contextByVenueId: Record<string, CalibrationVenueContext>;
+  submit: (
+    feature: CalibrationFeature,
+    venueId: string,
+    judgment: { accurate: boolean; note: string | null; recommendationCategory: string | null }
+  ) => Promise<CalibrationSubmitOutcome>;
+};
+
 export type UseAiDiscoverCardsResult = {
-  /** False whenever the `aiDiscoverCards` flag is off. Callers render nothing. */
+  /** False whenever the `aiDiscoverCards` flag is off for this viewer. Callers render nothing. */
   enabled: boolean;
   result: DiscoverIntelligenceResult;
   /** True while Crowd Pulse is still resolving. Never blocks the cards. */
   crowdPulseLoading: boolean;
+  calibration: AiDiscoverCalibration;
 };
 
 const EMPTY_RESULT: DiscoverIntelligenceResult = {
@@ -80,11 +111,14 @@ function resolveScope(venues: DiscoverVenueCardData[]) {
   return best ? { city: best.city, state: best.state } : null;
 }
 
+const CALIBRATION_FLAGS = ["aiDiscoverCards", "crowdPulse"] as const;
+
 export function useAiDiscoverCards(venues: DiscoverVenueCardData[]): UseAiDiscoverCardsResult {
-  const enabled = isFeatureEnabled("aiDiscoverCards");
+  const viewer = useViewerFeatureContext(CALIBRATION_FLAGS);
+  const enabled = isFeatureEnabledForViewer("aiDiscoverCards", viewer);
 
   const scope = useMemo(() => (enabled ? resolveScope(venues) : null), [enabled, venues]);
-  const pulse = useCrowdPulse({ scope, enabled });
+  const pulse = useCrowdPulse({ scope, enabled, viewer });
 
   const pulseByVenueId = useMemo(() => {
     const map = new Map<string, { level: CrowdPulseLevel; trend: CrowdPulseTrend }>();
@@ -124,5 +158,51 @@ export function useAiDiscoverCards(venues: DiscoverVenueCardData[]): UseAiDiscov
     return buildDiscoverCards(inputs);
   }, [enabled, venues, pulseByVenueId]);
 
-  return { enabled, result, crowdPulseLoading: pulse.loading };
+  const cardsApproved = isApprovedTester("aiDiscoverCards", viewer);
+  const crowdPulseApproved = isApprovedTester("crowdPulse", viewer);
+
+  // Only built for an approved tester: for everyone else this stays empty and
+  // the control has no props to render from.
+  const contextByVenueId = useMemo(() => {
+    const map: Record<string, CalibrationVenueContext> = {};
+    if (!cardsApproved && !crowdPulseApproved) {
+      return map;
+    }
+    for (const venue of venues) {
+      map[venue.id] = {
+        partyScore: typeof venue.partyScore === "number" ? venue.partyScore : null,
+        // PSI's own one-line answer, which is the text the founder actually read.
+        psiLabel: venue.psiExplanation?.headline ?? null,
+        crowdPulseLevel: pulseByVenueId.get(venue.id)?.level ?? null,
+        reasonCodes: (venue.psiExplanation?.reasons || []).map((reason) => reason.id),
+      };
+    }
+    return map;
+  }, [cardsApproved, crowdPulseApproved, pulseByVenueId, venues]);
+
+  const submit = useCallback<AiDiscoverCalibration["submit"]>(
+    async (feature, venueId, judgment) => {
+      const context = contextByVenueId[venueId];
+      return submitCalibrationFeedback({
+        feature,
+        venueId,
+        recommendationCategory:
+          feature === "crowdPulse" ? context?.crowdPulseLevel ?? null : judgment.recommendationCategory,
+        displayedPartyScore: context?.partyScore ?? null,
+        displayedPsiLabel: context?.psiLabel ?? null,
+        crowdPulseLevel: context?.crowdPulseLevel ?? null,
+        reasonCodes: context?.reasonCodes ?? null,
+        accurate: judgment.accurate,
+        note: judgment.note,
+      });
+    },
+    [contextByVenueId]
+  );
+
+  return {
+    enabled,
+    result,
+    crowdPulseLoading: pulse.loading,
+    calibration: { cardsApproved, crowdPulseApproved, contextByVenueId, submit },
+  };
 }

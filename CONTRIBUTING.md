@@ -64,6 +64,23 @@ Required environment variables:
 Never commit `.env` or `.env.local`. Never place a service-role key in any `NEXT_PUBLIC_*`
 variable or in client-reachable code.
 
+Optional feature-flag variables. All are unset in production, and unset means off for
+everyone — see `src/lib/featureFlags.ts` for the precedence rules.
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_FEATURE_CROWD_PULSE` | `true`/`1`/`on`/`yes` turns Crowd Pulse on for everyone |
+| `NEXT_PUBLIC_FEATURE_CROWD_PULSE_PROFILE_IDS` | Comma-separated `profiles.id` UUIDs granted Crowd Pulse while it stays off globally |
+| `NEXT_PUBLIC_FEATURE_CROWD_PULSE_CITY` | Grants Crowd Pulse to authenticated profiles whose `home_city` matches |
+| `NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS` | Global switch for AI Discover Cards |
+| `NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_PROFILE_IDS` | Per-profile allowlist for AI Discover Cards |
+| `NEXT_PUBLIC_FEATURE_AI_DISCOVER_CARDS_CITY` | City allowlist for AI Discover Cards |
+
+The allowlists match on `profiles.id` only, never on `username`, and they fail closed: one
+malformed entry discards the whole list. Anonymous visitors are never granted by an
+allowlist. Because `NEXT_PUBLIC_*` values are inlined into the client bundle, treat any id
+placed here as public — it is an identifier, not a credential, and RLS remains the boundary.
+
 Available scripts:
 
 | Command | Purpose |

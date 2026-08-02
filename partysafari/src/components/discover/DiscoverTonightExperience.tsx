@@ -75,6 +75,14 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
           <AiDiscoverCards
             cards={aiCards.result.cards}
             crowdPulseAvailable={aiCards.result.crowdPulseAvailable}
+            // Undefined unless this viewer was individually named in the
+            // calibration allowlist, so the control never enters the tree for
+            // anyone else — including after a global rollout.
+            calibration={
+              aiCards.calibration.cardsApproved || aiCards.calibration.crowdPulseApproved
+                ? aiCards.calibration
+                : undefined
+            }
           />
         ) : null}
 
