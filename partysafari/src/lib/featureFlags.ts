@@ -26,7 +26,9 @@
  *    comma-separated list of `public.profiles.id` UUIDs.
  * 3. **Approved city** — `NEXT_PUBLIC_FEATURE_*_CITY`, a single city string
  *    matched case-insensitively against the viewer's profile city. Unset means
- *    no city grants access; there is deliberately no default city.
+ *    no city grants access; there is deliberately no default city. Like the
+ *    allowlist, it grants only to an authenticated viewer — a city never admits
+ *    a signed-out visitor.
  * 4. Otherwise off, per `FEATURE_FLAG_DEFAULTS`.
  *
  * Allowlist membership is never "enable globally": it grants one viewer access
@@ -246,9 +248,17 @@ export function resolveFeatureAccess(input: {
 
   // An unconfigured city is null, so an anonymous viewer whose city is also
   // unknown can never match by both sides being empty.
+  //
+  // A city grant additionally requires an authenticated profile id. Today's only
+  // caller reads the city from the viewer's own `profiles.home_city` and so can
+  // never supply one without an id, but this function is exported and generic:
+  // without the check, any future caller that knows a city by some other route
+  // (a picker, geolocation, a query param) would hand a signed-out visitor the
+  // feature — and the calibration control with it, since `isApprovedTester`
+  // counts a city grant. Anonymous is never targeted.
   const approvedCity = input.config.approvedCity;
   const viewerCity = typeof input.viewer.city === "string" ? input.viewer.city.trim().toLowerCase() : "";
-  if (approvedCity !== null && viewerCity.length > 0 && viewerCity === approvedCity) {
+  if (approvedCity !== null && profileId.length > 0 && viewerCity.length > 0 && viewerCity === approvedCity) {
     return { enabled: true, grant: "cityAllowlist" };
   }
 

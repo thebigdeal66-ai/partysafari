@@ -137,6 +137,25 @@ test("an anonymous caller is denied even when an allowlist and a city are config
       assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: null, city: null }), false);
       assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: "", city: "" }), false);
       assert.equal(isApprovedTester("crowdPulse", { profileId: null }), false);
+
+      // Regression: the city branch used to match on the city alone, so a
+      // signed-out viewer who arrived with a matching city was granted the
+      // feature and counted as an approved tester. A city grant now requires an
+      // authenticated profile id as well.
+      for (const city of ["Ocean City", "ocean city", " OCEAN CITY "]) {
+        assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: null, city }), false);
+        assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: "", city }), false);
+        assert.equal(isApprovedTester("crowdPulse", { profileId: null, city }), false);
+        // The whole result, so the grant is "none" rather than merely disabled.
+        assert.deepEqual(
+          resolveFeatureAccess({
+            globalEnabled: false,
+            config: { approvedProfileIds: new Set<string>(), approvedCity: "ocean city" },
+            viewer: { profileId: null, city },
+          }),
+          { enabled: false, grant: "none" }
+        );
+      }
     }
   );
 });
@@ -193,6 +212,28 @@ test("city targeting grants access only when a city is configured", () => {
     assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: OTHER_PROFILE_ID, city: "ocean city " }), true);
     assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: OTHER_PROFILE_ID, city: "Rehoboth" }), false);
     assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: OTHER_PROFILE_ID, city: null }), false);
+  });
+});
+
+/**
+ * Pinned because it is the widest grant this module can make. A configured city
+ * makes every authenticated profile in that city an approved tester, which is
+ * what puts the internal Founder calibration control on their screen — so the
+ * city vars are a materially blunter instrument than the id allowlist and this
+ * asserts that, rather than leaving it to be discovered.
+ *
+ * It stays a presentation grant: the control can only submit a judgment about
+ * the submitter's own screen, and db/021's `WITH CHECK (auth.uid() = profile_id)`
+ * means a city match authorizes no row anyone else could read or write.
+ */
+test("a configured city makes every authenticated profile in it an approved tester", () => {
+  withEnv({ NEXT_PUBLIC_FEATURE_CROWD_PULSE_CITY: "Ocean City" }, () => {
+    assert.equal(isApprovedTester("crowdPulse", { profileId: OTHER_PROFILE_ID, city: "Ocean City" }), true);
+    assert.equal(isApprovedTester("crowdPulse", { profileId: OTHER_PROFILE_ID, city: "Rehoboth" }), false);
+    // A city alone never lets a signed-out visitor in, so the grant is still
+    // scoped to authenticated identity.
+    assert.equal(isApprovedTester("crowdPulse", { profileId: null, city: "Ocean City" }), false);
+    assert.equal(isFeatureEnabledForViewer("crowdPulse", { profileId: null, city: "Ocean City" }), false);
   });
 });
 

@@ -4,8 +4,10 @@ import {
   CALIBRATION_FEATURES,
   CALIBRATION_NOTE_MAX_LENGTH,
   buildCalibrationFeedbackRow,
+  submitCalibrationFeedback,
   validateCalibrationFeedbackRow,
   type CalibrationFeedbackDraft,
+  type CalibrationFeedbackRow,
 } from "@/lib/calibrationFeedback";
 
 /**
@@ -117,6 +119,101 @@ test("blank text degrades to null rather than to an empty string", () => {
     reason_codes: null,
     accurate: false,
     note: null,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The submit path itself, not just the pure builder
+// ---------------------------------------------------------------------------
+
+/**
+ * `submitCalibrationFeedback` reads the caller's identity through
+ * `resolveCurrentUserId`, which answers from a 15s global cache before it ever
+ * reaches the network. Seeding that cache is therefore enough to pin a session
+ * for the duration of a test, with no Supabase client constructed and no env
+ * var required.
+ */
+type SupabaseState = { userIdCache?: { value: string | null; at: number }; userIdPromise?: unknown };
+type SubmitOptions = NonNullable<Parameters<typeof submitCalibrationFeedback>[1]>;
+
+function withSession(profileId: string | null, run: () => Promise<void>): Promise<void> {
+  const globalRef = globalThis as typeof globalThis & { __partysafariSupabaseState__?: SupabaseState };
+  const previous = globalRef.__partysafariSupabaseState__;
+  globalRef.__partysafariSupabaseState__ = { userIdCache: { value: profileId, at: Date.now() }, userIdPromise: null };
+  return run().finally(() => {
+    globalRef.__partysafariSupabaseState__ = previous;
+  });
+}
+
+function captureInserts(error: { code?: string; message?: string } | null) {
+  const rows: CalibrationFeedbackRow[] = [];
+  const supabase = {
+    from: () => ({
+      insert: async (row: CalibrationFeedbackRow) => {
+        rows.push(row);
+        return { error };
+      },
+    }),
+  } as unknown as SubmitOptions["supabase"];
+  return { rows, supabase };
+}
+
+test("a signed-out caller writes nothing at all", async () => {
+  await withSession(null, async () => {
+    const { rows, supabase } = captureInserts(null);
+    const outcome = await submitCalibrationFeedback(DRAFT, { supabase });
+
+    assert.deepEqual(outcome, { status: "unauthenticated" });
+    assert.equal(rows.length, 0, "an anonymous submit must not reach the table");
+  });
+});
+
+test("the inserted row is attributed to the session, not to anything the caller passed", async () => {
+  await withSession(FOUNDER_PROFILE_ID, async () => {
+    const { rows, supabase } = captureInserts(null);
+    const smuggled = { ...DRAFT, profile_id: OTHER_PROFILE_ID } as unknown as CalibrationFeedbackDraft;
+    const outcome = await submitCalibrationFeedback(smuggled, { supabase });
+
+    assert.deepEqual(outcome, { status: "ok" });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].profile_id, FOUNDER_PROFILE_ID);
+    assert.equal(Object.hasOwn(rows[0], "city"), false, "city targeting never reaches the write");
+  });
+});
+
+test("an over-long note is refused before the insert rather than by a 23514", async () => {
+  await withSession(FOUNDER_PROFILE_ID, async () => {
+    const { rows, supabase } = captureInserts(null);
+    const outcome = await submitCalibrationFeedback(
+      { ...DRAFT, note: "x".repeat(CALIBRATION_NOTE_MAX_LENGTH + 1) },
+      { supabase }
+    );
+
+    assert.equal(outcome.status, "invalid");
+    assert.equal(rows.length, 0);
+  });
+});
+
+test("a missing table degrades to unavailable, which is today's production state", async () => {
+  await withSession(FOUNDER_PROFILE_ID, async () => {
+    const { supabase } = captureInserts({
+      code: "42P01",
+      message: 'relation "public.calibration_feedback" does not exist',
+    });
+
+    assert.deepEqual(await submitCalibrationFeedback(DRAFT, { supabase }), { status: "unavailable" });
+  });
+});
+
+test("an RLS refusal surfaces as an error rather than as a silent success", async () => {
+  await withSession(FOUNDER_PROFILE_ID, async () => {
+    const { supabase } = captureInserts({
+      code: "42501",
+      message: 'new row violates row-level security policy for table "calibration_feedback"',
+    });
+    const outcome = await submitCalibrationFeedback(DRAFT, { supabase });
+
+    assert.equal(outcome.status, "error");
   });
 });
 
