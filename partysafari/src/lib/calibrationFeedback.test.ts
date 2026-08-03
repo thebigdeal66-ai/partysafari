@@ -155,6 +155,16 @@ test("a missing table degrades to unavailable", async () => {
   });
 });
 
+test("an insert failure surfaces as an error state", async () => {
+  await withSession(FOUNDER_PROFILE_ID, async () => {
+    const { supabase } = captureInserts({ code: "23505", message: "duplicate key value violates unique constraint" });
+    const outcome = await submitCalibrationFeedback(DRAFT, { supabase });
+
+    assert.equal(outcome.status, "error");
+    assert.match(outcome.message, /duplicate key/i);
+  });
+});
+
 test("validation mirrors the CHECK constraints in db/021", () => {
   const base = buildCalibrationFeedbackRow(DRAFT, FOUNDER_PROFILE_ID);
   assert.equal(validateCalibrationFeedbackRow(base), null);
