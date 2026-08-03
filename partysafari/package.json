@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsc -p tsconfig.test.json && node ./scripts/run-tests.js",
+    "test": "vitest run",
     "sql:validate:021": "./scripts/run-disposable-postgres-sql.sh scripts/sql/021_calibration_feedback_syntax_validation.sql",
     "sql:test:021": "./scripts/run-disposable-postgres-sql.sh scripts/sql/021_calibration_feedback_rls_tests.sql"
   },
@@ -21,6 +21,9 @@
     "react-leaflet": "^5.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^20",
@@ -29,8 +32,10 @@
     "autoprefixer": "^10.4.27",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "jsdom": "^27.0.1",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }

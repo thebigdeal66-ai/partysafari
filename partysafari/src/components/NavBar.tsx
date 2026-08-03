@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import NotificationCenter from "@/components/NotificationCenter";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { FRIEND_STATE_SYNC_EVENT } from "@/lib/friendSync";
@@ -10,9 +12,69 @@ import { TEMP_KILL_SWITCH } from "@/lib/runtimeKillSwitch";
 const MESSAGES_READ_EVENT = "partysafari:messages-read";
 
 export default function NavBar() {
+  const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [messageUnreadTotal, setMessageUnreadTotal] = useState(0);
   const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setIsAuthenticated(Boolean(session?.user));
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      setIsAuthenticated(Boolean(session?.user));
+      if (!session?.user) {
+        setMessageUnreadTotal(0);
+        setPendingFriendRequests(0);
+      }
+    });
+
+    void syncSession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  const handleSignOut = async () => {
+    if (signingOut) {
+      return;
+    }
+
+    setSignOutError(null);
+    setSigningOut(true);
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      setSignOutError("Unable to sign out right now. Please try again.");
+      setSigningOut(false);
+      return;
+    }
+
+    setIsAuthenticated(false);
+    setMessageUnreadTotal(0);
+    setPendingFriendRequests(0);
+    router.replace("/login");
+    router.refresh();
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -147,11 +209,11 @@ export default function NavBar() {
   return (
     <nav className="bg-[#07070B] border-b border-white/10 px-6 py-4">
       <div className="mx-auto max-w-6xl">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
         <Link href="/" className="text-2xl font-bold text-white">
           🔥 PartySafari
         </Link>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 sm:gap-6">
           <div className="hidden lg:flex items-center gap-6">
             <Link
               href="/"
@@ -224,7 +286,27 @@ export default function NavBar() {
               Venue Owner
             </Link>
           </div>
-          <NotificationCenter />
+          <div className="hidden sm:flex items-center gap-3">
+            {isAuthenticated ? <NotificationCenter /> : null}
+            {isAuthenticated ? (
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                disabled={signingOut}
+                aria-label="Sign out of your account"
+                className="rounded-full border border-rose-300/35 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {signingOut ? "Signing out..." : "Sign Out"}
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+              >
+                Log In
+              </Link>
+            )}
+          </div>
         </div>
         </div>
 
@@ -264,7 +346,31 @@ export default function NavBar() {
           >
             Venue Owner
           </Link>
+          {isAuthenticated ? (
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              aria-label="Sign out of your account"
+              className="rounded-full border border-rose-300/35 bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {signingOut ? "Signing out..." : "Sign Out"}
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+            >
+              Log In
+            </Link>
+          )}
         </div>
+
+        {signOutError ? (
+          <div className="mt-3 rounded-2xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100" role="status" aria-live="polite">
+            {signOutError}
+          </div>
+        ) : null}
       </div>
     </nav>
   );
