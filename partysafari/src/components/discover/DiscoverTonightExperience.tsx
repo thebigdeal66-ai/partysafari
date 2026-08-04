@@ -8,6 +8,7 @@ import EventStartingSoonCard from "@/components/discover/EventStartingSoonCard";
 import VenuePartyCard from "@/components/discover/VenuePartyCard";
 import WhyThisVenue from "@/components/discover/WhyThisVenue";
 import AiDiscoverCards from "@/components/discover/AiDiscoverCards";
+import FounderCalibrationControl from "@/components/discover/FounderCalibrationControl";
 import {
   CardSkeleton,
   EmptyState,
@@ -21,6 +22,14 @@ import { useAiDiscoverCards } from "@/hooks/useAiDiscoverCards";
 import { useDiscoverTonightData } from "@/hooks/useDiscoverTonightData";
 import { useVenueLit } from "@/hooks/useVenueLit";
 import { litBoostPoints } from "@/lib/litSignals";
+import { useViewerFeatureContext } from "@/hooks/useViewerFeatureContext";
+import { isFeatureEnabledForViewer } from "@/lib/featureFlags";
+import { submitCalibrationFeedback } from "@/lib/calibrationFeedback";
+import {
+  createCrowdPulseCalibrationDraft,
+  hasMeaningfulCrowdPulseSignals,
+  resolveCrowdPulseCalibrationAnchor,
+} from "@/lib/discoverCrowdPulse";
 
 function formatDateLabel(value: string) {
   const parsed = new Date(value);
@@ -59,6 +68,10 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
   const hotVenueIds = useMemo(() => data.hotRightNow.map((venue) => venue.id), [data.hotRightNow]);
   const lit = useVenueLit({ venueIds: hotVenueIds });
   const aiCards = useAiDiscoverCards(data.venueCards);
+  const viewer = useViewerFeatureContext(["crowdPulse"]);
+  const founderCrowdPulseAccess = !viewer.loading && isFeatureEnabledForViewer("crowdPulse", viewer);
+  const calibrationAnchor = useMemo(() => resolveCrowdPulseCalibrationAnchor(data.hotRightNow), [data.hotRightNow]);
+  const hasSignals = useMemo(() => hasMeaningfulCrowdPulseSignals(data.hotRightNow), [data.hotRightNow]);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.15),transparent_24%),linear-gradient(180deg,#05060b_0%,#090510_48%,#06040a_100%)] px-3 py-4 text-white sm:px-6 sm:py-6">
@@ -79,11 +92,40 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
         ) : null}
 
         <SectionShell
-          eyebrow="🔥 Hot Right Now"
-          title="Top venues ranked by Party Score"
-          description="Score updates animate live as check-ins, stories, events, and friend activity change."
-          action={<SectionLink href="/map">View map</SectionLink>}
+          eyebrow="⚡ Crowd Pulse"
+          title="Crowd Pulse"
+          description="See where tonight's energy is building in real time."
+          action={<SectionLink href="/map">View Crowd Pulse</SectionLink>}
         >
+          {founderCrowdPulseAccess ? (
+            <div className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-500/10 p-3.5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-amber-200/75">Founder-only detail</p>
+              <p className="mt-1 text-sm text-white/75">
+                Canonical Party Score ranking and PSI evidence are shown as rendered so calibration stays tied to real venues only.
+              </p>
+              {!hasSignals ? (
+                <div className="mt-2 space-y-1 text-xs text-white/65">
+                  <p>Building tonight&apos;s pulse</p>
+                  <p>Live check-ins, stories, events, and Lit activity will shape this venue&apos;s pulse as the night develops.</p>
+                  <p>Activity is currently below the privacy threshold.</p>
+                </div>
+              ) : null}
+              {calibrationAnchor ? (
+                <FounderCalibrationControl
+                  targets={[{ feature: "crowdPulse", label: calibrationAnchor.label }]}
+                  onSubmit={async (_feature, judgment) =>
+                    submitCalibrationFeedback(
+                      createCrowdPulseCalibrationDraft({
+                        anchor: calibrationAnchor,
+                        accurate: judgment.accurate,
+                        note: judgment.note,
+                      })
+                    )
+                  }
+                />
+              ) : null}
+            </div>
+          ) : null}
           {states.hotRightNow.error ? <SectionError message={states.hotRightNow.error} /> : null}
           {states.hotRightNow.loading && data.hotRightNow.length === 0 ? (
             <div className="grid gap-4 md:grid-cols-2">{skeletons(4, CardSkeleton)}</div>
@@ -91,9 +133,9 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
           {!states.hotRightNow.loading && data.hotRightNow.length === 0 ? (
             <EmptyState
               icon="🌙"
-              title="The night is still young"
-              message="No venues have lit up yet tonight. Check in somewhere and you will be the first name on the board."
-              action={<SectionLink href="/map">Open Live Map</SectionLink>}
+              title="Building tonight's pulse"
+              message="Live check-ins, stories, events, and Lit activity will shape this venue's pulse as the night develops."
+              action={<SectionLink href="/map">View Crowd Pulse</SectionLink>}
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
