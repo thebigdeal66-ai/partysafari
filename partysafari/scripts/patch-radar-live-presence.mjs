@@ -14,6 +14,11 @@ if (!source.includes(importLine)) {
   );
 }
 
+source = source.replace(
+  'import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";',
+  'import { Circle, MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";',
+);
+
 const iconFunction = `
 function createLivePresenceIcon(isFriend: boolean) {
   return L.divIcon({
@@ -23,10 +28,22 @@ function createLivePresenceIcon(isFriend: boolean) {
     iconAnchor: [17, 17],
   });
 }
+
+function formatPresenceAge(updatedAt: string) {
+  const ageSeconds = Math.max(0, Math.floor((Date.now() - Date.parse(updatedAt)) / 1000));
+  if (ageSeconds < 45) return "Live now";
+  const minutes = Math.max(1, Math.floor(ageSeconds / 60));
+  return "Updated " + minutes + " min ago";
+}
 `;
 
 if (!source.includes("function createLivePresenceIcon")) {
   source = source.replace("function MapTracker({ onZoomChange }: MapTrackerProps) {", `${iconFunction}\nfunction MapTracker({ onZoomChange }: MapTrackerProps) {`);
+} else if (!source.includes("function formatPresenceAge")) {
+  source = source.replace(
+    "function MapTracker({ onZoomChange }: MapTrackerProps) {",
+    `function formatPresenceAge(updatedAt: string) {\n  const ageSeconds = Math.max(0, Math.floor((Date.now() - Date.parse(updatedAt)) / 1000));\n  if (ageSeconds < 45) return "Live now";\n  const minutes = Math.max(1, Math.floor(ageSeconds / 60));\n  return "Updated " + minutes + " min ago";\n}\n\nfunction MapTracker({ onZoomChange }: MapTrackerProps) {`,
+  );
 }
 
 const hookLine = "  const livePresence = useLivePartyPresence();";
@@ -60,7 +77,7 @@ const controlBlock = `
 if (!source.includes('aria-label="Live location privacy"')) {
   const locateButtonEnd = `        </button>\n\n        <label className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">`;
   source = source.replace(locateButtonEnd, `        </button>\n${controlBlock}\n        <label className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">`);
-} else if (!source.includes("nearby\n          </span>")) {
+} else if (!source.includes("} nearby")) {
   source = source.replace(
     '          </select>\n        </label>',
     '          </select>\n          <span className="ml-2 rounded-full bg-cyan-300/15 px-1.5 py-0.5 text-[10px] text-cyan-100/80">\n            {livePresence.presences.filter((presence) => presence.userId !== livePresence.userId).length} nearby\n          </span>\n        </label>',
@@ -76,14 +93,23 @@ const markersBlock = `
                   position={[presence.lat, presence.lng]}
                   icon={createLivePresenceIcon(presence.privacyMode === "friends")}
                   zIndexOffset={900}
-                />
+                >
+                  <Tooltip direction="top" offset={[0, -14]} opacity={0.95}>
+                    <div className="text-xs font-semibold">
+                      {presence.privacyMode === "friends" ? "Friend on Safari" : "PartySafari user"}
+                      <div className="text-[10px] font-normal opacity-70">{formatPresenceAge(presence.updatedAt)}</div>
+                    </div>
+                  </Tooltip>
+                </Marker>
               ))}
 `;
 
 if (!source.includes("presence.userId !== livePresence.userId")) {
+  source = source.replace("            <TileLayer\n", `${markersBlock}\n            <TileLayer\n`);
+} else if (!source.includes("formatPresenceAge(presence.updatedAt)")) {
   source = source.replace(
-    "            <TileLayer\n",
-    `${markersBlock}\n            <TileLayer\n`,
+    `                  zIndexOffset={900}\n                />`,
+    `                  zIndexOffset={900}\n                >\n                  <Tooltip direction="top" offset={[0, -14]} opacity={0.95}>\n                    <div className="text-xs font-semibold">\n                      {presence.privacyMode === "friends" ? "Friend on Safari" : "PartySafari user"}\n                      <div className="text-[10px] font-normal opacity-70">{formatPresenceAge(presence.updatedAt)}</div>\n                    </div>\n                  </Tooltip>\n                </Marker>`,
   );
 }
 
@@ -101,9 +127,7 @@ const liveStyles = `
           transition: filter 250ms ease, opacity 250ms ease;
         }
 
-        .radar-live-person:hover {
-          filter: brightness(1.2);
-        }
+        .radar-live-person:hover { filter: brightness(1.2); }
 
         .radar-live-person.friend {
           background: radial-gradient(circle at 30% 25%, #f0abfc, #a21caf 70%);
@@ -124,10 +148,6 @@ if (!source.includes(".radar-live-person")) {
   source = source.replace(
     "          animation: live-person-pulse 2.4s ease-in-out infinite;",
     "          animation: live-person-pulse 2.4s ease-in-out infinite;\n          transition: filter 250ms ease, opacity 250ms ease;",
-  );
-  source = source.replace(
-    "        .radar-live-person.friend {",
-    "        .radar-live-person:hover {\n          filter: brightness(1.2);\n        }\n\n        .radar-live-person.friend {",
   );
 }
 
