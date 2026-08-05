@@ -105,6 +105,46 @@ function cachedAsPosition(cached: CachedLocation): GeolocationPosition {
   };
 }
 
+function requestNativePosition(
+  success: PositionCallback,
+  error: PositionErrorCallback | null | undefined,
+  options: PositionOptions | undefined
+) {
+  const state = getTrackerState();
+  const original = state.originalGetCurrentPosition;
+  if (!original) return;
+
+  original(
+    (position) => {
+      cachePosition(position);
+      success(position);
+    },
+    (positionError) => {
+      const shouldRetryWithStandardAccuracy =
+        options?.enableHighAccuracy === true && positionError.code !== positionError.PERMISSION_DENIED;
+
+      if (!shouldRetryWithStandardAccuracy) {
+        error?.(positionError);
+        return;
+      }
+
+      original(
+        (position) => {
+          cachePosition(position);
+          success(position);
+        },
+        error || undefined,
+        {
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 0,
+        }
+      );
+    },
+    options
+  );
+}
+
 function patchGetCurrentPosition() {
   if (typeof navigator === "undefined" || !("geolocation" in navigator)) return;
 
@@ -121,14 +161,7 @@ function patchGetCurrentPosition() {
       return;
     }
 
-    state.originalGetCurrentPosition?.(
-      (position) => {
-        cachePosition(position);
-        success(position);
-      },
-      error,
-      options
-    );
+    requestNativePosition(success, error, options);
   };
   state.patched = true;
 }
