@@ -10,9 +10,7 @@ const helperStart = "function buildPartyForecast(hotspot: RadarHotspot): PartyFo
 const helperEnd = "\nfunction estimatedTravelMinutes(distanceMiles: number | null) {";
 const helperIndex = source.indexOf(helperStart);
 const helperEndIndex = source.indexOf(helperEnd, helperIndex);
-if (helperIndex === -1 || helperEndIndex === -1) {
-  throw new Error("Sprint 017 forecast helper was not found.");
-}
+if (helperIndex === -1 || helperEndIndex === -1) throw new Error("Sprint 017 forecast helper was not found.");
 
 const upgradedHelpers = `function forecastEnergy(score: number) {
   if (score >= 82) return { label: "Hot", accent: "border-red-300/40 bg-red-400/12 text-red-100" };
@@ -42,56 +40,62 @@ function buildPartyForecast(hotspot: RadarHotspot): PartyForecastSlot[] {
   const lateHour = Math.max(peakHour + 2, 24);
   const hours = [currentHour, eveningStart + 1, peakHour, lateHour];
   const labels = ["Now", "Building", "Expected peak", "Late night"];
-
   return hours.map((hour, step) => {
     const forecastTime = new Date(now);
     forecastTime.setHours(hour, 0, 0, 0);
     const curveLift = step === 0 ? 0 : step === 1 ? 8 : step === 2 ? 18 : 7;
     const score = Math.max(5, Math.min(100, Math.round(baseScore + curveLift + eventLift + liveLift + momentum * step * 0.7)));
     return {
-      time: step === 0 ? "Now" : forecastTime.toLocaleTimeString([], { hour: "numeric", minute: hour % 1 ? "2-digit" : undefined }),
+      time: step === 0 ? "Now" : forecastTime.toLocaleTimeString([], { hour: "numeric" }),
       label: labels[step],
       score,
     };
   });
 }
 `;
-
 source = source.slice(0, helperIndex) + upgradedHelpers + source.slice(helperEndIndex + 1);
 
-const oldHeader = `<div className="flex items-center justify-between">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200">Tonight&apos;s forecast</p>
-                          <span className="text-[10px] text-white/45">Early estimate</span>
-                        </div>`;
-const newHeader = `<div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200">Tonight&apos;s forecast</p>
-                            <p className="mt-1 text-[10px] text-white/40">Updated just now</p>
-                          </div>
-                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-white/65">{forecastConfidence(selectedHotspot)}% confidence</span>
-                        </div>`;
+const oldHeader = [
+  '<div className="flex items-center justify-between">',
+  '                          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200">Tonight&apos;s forecast</p>',
+  '                          <span className="text-[10px] text-white/45">Early estimate</span>',
+  '                        </div>',
+].join("\n");
+const newHeader = [
+  '<div className="flex items-center justify-between gap-3">',
+  '                          <div>',
+  '                            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200">Tonight&apos;s forecast</p>',
+  '                            <p className="mt-1 text-[10px] text-white/40">Updated just now</p>',
+  '                          </div>',
+  '                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-white/65">{forecastConfidence(selectedHotspot)}% confidence</span>',
+  '                        </div>',
+].join("\n");
 if (!source.includes(oldHeader)) throw new Error("Forecast header anchor was not found.");
 source = source.replace(oldHeader, newHeader);
 
-const oldCards = `{buildPartyForecast(selectedHotspot).map((slot) => (
-                            <div key={\`${slot.time}-${slot.label}\`} className="rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-center">
-                              <p className="text-[10px] font-semibold text-white/55">{slot.time}</p>
-                              <p className="mt-1 text-sm font-bold text-white">{slot.score}</p>
-                              <p className="mt-1 truncate text-[9px] text-white/45">{slot.label}</p>
-                            </div>
-                          ))}`;
-const newCards = `{buildPartyForecast(selectedHotspot).map((slot) => {
-                            const energy = forecastEnergy(slot.score);
-                            const isPeak = slot.label === "Expected peak";
-                            return (
-                              <div key={\`${slot.time}-${slot.label}\`} className={\`relative rounded-xl border px-2 py-2 text-center \${energy.accent} \${isPeak ? "shadow-[0_0_24px_rgba(217,70,239,0.28)] ring-1 ring-fuchsia-300/35" : ""}\`}>
-                                {isPeak ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-fuchsia-500 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">Peak</span> : null}
-                                <p className="text-[10px] font-semibold opacity-70">{slot.time}</p>
-                                <p className="mt-1 text-sm font-bold">{slot.score}%</p>
-                                <p className="mt-1 truncate text-[9px] opacity-70">{energy.label}</p>
-                              </div>
-                            );
-                          })}`;
+const oldCards = [
+  '{buildPartyForecast(selectedHotspot).map((slot) => (',
+  '                            <div key={`${slot.time}-${slot.label}`} className="rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-center">',
+  '                              <p className="text-[10px] font-semibold text-white/55">{slot.time}</p>',
+  '                              <p className="mt-1 text-sm font-bold text-white">{slot.score}</p>',
+  '                              <p className="mt-1 truncate text-[9px] text-white/45">{slot.label}</p>',
+  '                            </div>',
+  '                          ))}',
+].join("\n");
+const newCards = [
+  '{buildPartyForecast(selectedHotspot).map((slot) => {',
+  '                            const energy = forecastEnergy(slot.score);',
+  '                            const isPeak = slot.label === "Expected peak";',
+  '                            return (',
+  '                              <div key={`${slot.time}-${slot.label}`} className={`relative rounded-xl border px-2 py-2 text-center ${energy.accent} ${isPeak ? "shadow-[0_0_24px_rgba(217,70,239,0.28)] ring-1 ring-fuchsia-300/35" : ""}`}>',
+  '                                {isPeak ? <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-fuchsia-500 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">Peak</span> : null}',
+  '                                <p className="text-[10px] font-semibold opacity-70">{slot.time}</p>',
+  '                                <p className="mt-1 text-sm font-bold">{slot.score}%</p>',
+  '                                <p className="mt-1 truncate text-[9px] opacity-70">{energy.label}</p>',
+  '                              </div>',
+  '                            );',
+  '                          })}',
+].join("\n");
 if (!source.includes(oldCards)) throw new Error("Forecast card anchor was not found.");
 source = source.replace(oldCards, newCards);
 
