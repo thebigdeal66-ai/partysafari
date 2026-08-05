@@ -113,7 +113,9 @@ function patchGetCurrentPosition() {
 
   state.originalGetCurrentPosition = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
   navigator.geolocation.getCurrentPosition = (success, error, options) => {
-    const cached = readCachedPosition();
+    const requiresFreshPosition = options?.enableHighAccuracy === true || options?.maximumAge === 0;
+    const cached = requiresFreshPosition ? null : readCachedPosition();
+
     if (cached) {
       success(cachedAsPosition(cached));
       return;
