@@ -43,16 +43,16 @@ const callbackBlock = `  const takeMeToTheParty = useCallback(() => {
 
     const reasons: string[] = [];
     if (winner.openNow) reasons.push("open now");
-    if (winner.liveCheckins > 0) reasons.push(\`${winner.liveCheckins} live check-in${winner.liveCheckins === 1 ? "" : "s"}\`);
-    if (winner.activeStories > 0) reasons.push(\`${winner.activeStories} active stor${winner.activeStories === 1 ? "y" : "ies"}\`);
-    if (winner.currentEvents > 0) reasons.push(\`${winner.currentEvents} active event${winner.currentEvents === 1 ? "" : "s"}\`);
-    if (winner.friendsHere > 0) reasons.push(\`${winner.friendsHere} friend${winner.friendsHere === 1 ? "" : "s"} here\`);
+    if (winner.liveCheckins > 0) reasons.push(\`\${winner.liveCheckins} live check-in\${winner.liveCheckins === 1 ? "" : "s"}\`);
+    if (winner.activeStories > 0) reasons.push(\`\${winner.activeStories} active stor\${winner.activeStories === 1 ? "y" : "ies"}\`);
+    if (winner.currentEvents > 0) reasons.push(\`\${winner.currentEvents} active event\${winner.currentEvents === 1 ? "" : "s"}\`);
+    if (winner.friendsHere > 0) reasons.push(\`\${winner.friendsHere} friend\${winner.friendsHere === 1 ? "" : "s"} here\`);
     if (winner.partyScore.momentum > 0) reasons.push("momentum is rising");
 
-    const distanceText = winner.distanceMiles === null ? "within the selected area" : \`${Math.round(winner.distanceMiles)} miles away\`;
+    const distanceText = winner.distanceMiles === null ? "within the selected area" : \`\${Math.round(winner.distanceMiles)} miles away\`;
     const reasonText = reasons.length > 0
-      ? \`Radar chose ${winner.name} because it is ${reasons.slice(0, 3).join(", ")} and ${distanceText}.\`
-      : \`Live activity is limited right now, so Radar chose ${winner.name} as the strongest available nightlife match ${distanceText} based on venue type, open status, Party Pulse, and distance.\`;
+      ? \`Radar chose \${winner.name} because it is \${reasons.slice(0, 3).join(", ")} and \${distanceText}.\`
+      : \`Live activity is limited right now, so Radar chose \${winner.name} as the strongest available nightlife match \${distanceText} based on venue type, open status, Party Pulse, and distance.\`;
 
     setGeoError(null);
     setViewMode("map");
