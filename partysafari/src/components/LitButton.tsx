@@ -50,6 +50,36 @@ export default function LitButton({ venueId, onLit, className = "" }: LitButtonP
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const channel = supabase.channel(`lit-eligibility-checkins-${venueId}`);
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "venue_checkins",
+        filter: `venue_id=eq.${venueId}`,
+      },
+      () => {
+        void refresh();
+      }
+    );
+    void channel.subscribe();
+
+    const fallback = window.setInterval(() => {
+      void refresh();
+    }, 5000);
+
+    const handleFocus = () => void refresh();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.clearInterval(fallback);
+      window.removeEventListener("focus", handleFocus);
+      void supabase.removeChannel(channel);
+    };
+  }, [refresh, supabase, venueId]);
+
   if (!available || !litState) {
     return null;
   }
@@ -69,12 +99,28 @@ export default function LitButton({ venueId, onLit, className = "" }: LitButtonP
 
   const handleClick = async () => {
     if (!eligibility.canLit) {
-      if (eligibility.reason === "unauthenticated") {
-        window.location.href = "/login";
+      await refresh();
+      const refreshedViewer = await fetchLitViewerContext([venueId], { supabase });
+      const refreshedCheckin = refreshedViewer.checkinByVenueId[venueId] || null;
+      const refreshedEligibility = evaluateLitEligibility({
+        isAuthenticated: Boolean(refreshedViewer.userId),
+        checkin: refreshedCheckin,
+        viewerExpiresAt: litState.viewerExpiresAt,
+        litsInQuotaWindow: refreshedViewer.litsInQuotaWindow,
+      });
+
+      if (refreshedEligibility.canLit) {
+        setUserId(refreshedViewer.userId);
+        setCheckin(refreshedCheckin);
+        setQuotaCount(refreshedViewer.litsInQuotaWindow);
+      } else {
+        if (refreshedEligibility.reason === "unauthenticated") {
+          window.location.href = "/login";
+          return;
+        }
+        setMessage(refreshedEligibility.reason ? litIneligibilityMessage(refreshedEligibility.reason) : null);
         return;
       }
-      setMessage(eligibility.reason ? litIneligibilityMessage(eligibility.reason) : null);
-      return;
     }
 
     setBusy(true);
