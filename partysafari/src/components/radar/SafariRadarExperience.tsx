@@ -8,6 +8,9 @@ import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { useLiveVenueMetrics } from "@/hooks/useLiveVenueMetrics";
 import { usePartyScores } from "@/hooks/usePartyScore";
 import { emptyPartyScore, toSafePartyScore, type PartyScoreDetails } from "@/lib/partyScore";
+import { buildCrowdPulseSnapshot, type CrowdPulseSnapshot } from "@/lib/discoverCrowdPulse";
+import { CrowdPulseCard } from "@/components/crowd-pulse";
+import { getVenueStatusLabel, resolveCurrentVibe } from "@/lib/crowdPulsePresentation";
 import VenueCheckInButton from "@/components/VenueCheckInButton";
 import "leaflet/dist/leaflet.css";
 
@@ -46,6 +49,7 @@ type RadarEvent = {
 type RadarHotspotTier = "Quiet" | "Picking Up" | "Active" | "Busy" | "Hot" | "Legendary";
 
 type RadarHotspot = RadarVenue & {
+  crowdPulse: CrowdPulseSnapshot;
   partyScore: PartyScoreDetails;
   tier: RadarHotspotTier;
   liveCheckins: number;
@@ -174,17 +178,17 @@ function toTier(score: number): RadarHotspotTier {
 function toTierStyle(tier: RadarHotspotTier) {
   switch (tier) {
     case "Legendary":
-      return { className: "radar-hotspot legendary", radius: 34, glowRadius: 290 };
+      return { className: "radar-hotspot legendary", radius: 34, glowRadius: 300, haloColor: "#ef4444" };
     case "Hot":
-      return { className: "radar-hotspot hot", radius: 30, glowRadius: 220 };
+      return { className: "radar-hotspot hot", radius: 30, glowRadius: 240, haloColor: "#f97316" };
     case "Busy":
-      return { className: "radar-hotspot busy", radius: 26, glowRadius: 170 };
+      return { className: "radar-hotspot busy", radius: 26, glowRadius: 190, haloColor: "#fb923c" };
     case "Active":
-      return { className: "radar-hotspot active", radius: 22, glowRadius: 130 };
+      return { className: "radar-hotspot active", radius: 22, glowRadius: 150, haloColor: "#facc15" };
     case "Picking Up":
-      return { className: "radar-hotspot picking", radius: 19, glowRadius: 90 };
+      return { className: "radar-hotspot picking", radius: 19, glowRadius: 95, haloColor: "#a3e635" };
     default:
-      return { className: "radar-hotspot quiet", radius: 15, glowRadius: 60 };
+      return { className: "radar-hotspot quiet", radius: 15, glowRadius: 70, haloColor: "#22c55e" };
   }
 }
 
@@ -261,17 +265,18 @@ function clusterHotspots(hotspots: RadarHotspot[], zoom: number): RadarCluster[]
 
 function createHotspotIcon(hotspot: RadarHotspot, selected: boolean) {
   const style = toTierStyle(hotspot.tier);
-  const score = Math.max(0, Math.min(100, Math.round(hotspot.partyScore.score)));
+  const score = Math.max(0, Math.min(100, Math.round(hotspot.crowdPulse.pulseScore)));
+  const radius = Math.max(15, Math.min(38, Math.round(15 + score * 0.24)));
   return L.divIcon({
     className: "",
-    html: `<button class="${style.className}${selected ? " selected" : ""}"><span>${score}</span></button>`,
-    iconSize: [style.radius * 2, style.radius * 2],
-    iconAnchor: [style.radius, style.radius],
+    html: `<button class="${style.className}${selected ? " selected" : ""}" style="width:${radius * 2}px;height:${radius * 2}px"><span>${score}</span></button>`,
+    iconSize: [radius * 2, radius * 2],
+    iconAnchor: [radius, radius],
   });
 }
 
 function createClusterIcon(hotspots: RadarHotspot[]) {
-  const topScore = Math.max(...hotspots.map((item) => item.partyScore.score));
+  const topScore = Math.max(...hotspots.map((item) => item.crowdPulse.pulseScore));
   const tier = toTier(topScore);
   const style = toTierStyle(tier);
   return L.divIcon({
@@ -782,7 +787,6 @@ export default function SafariRadarExperience() {
       .map((venue) => {
         const metrics = liveMetrics.metricsByVenueId[venue.id];
         const score = toSafePartyScore(partyScores.scoresByVenueId[venue.id] || emptyPartyScore(venue.id));
-        const tier = toTier(score.score);
         const venueEvents = (eventsByVenueId.get(venue.id) || []).filter((event) => {
           const status = (event.status || "").toLowerCase();
           if (!["active", "published", "live", "scheduled"].includes(status)) {
@@ -798,9 +802,28 @@ export default function SafariRadarExperience() {
 
         const currentEvent = venueEvents.find((event) => Date.parse(event.startTime) <= now) || venueEvents[0] || null;
         const distanceMiles = getDistanceMiles(from, { lat: venue.latitude, lng: venue.longitude });
+        const liveCheckins = metrics?.liveCheckins || 0;
+        const activeStories = metrics?.activeStories || 0;
+        const currentEvents = metrics?.currentEvents || venueEvents.length;
+        const friendsHere = metrics?.friendsHere || 0;
+        const crowdPulse = buildCrowdPulseSnapshot({
+          partyScore: {
+            score: score.score,
+            trend: score.trend,
+            momentum: score.momentum,
+            confidence: score.confidence,
+            crowdLevel: score.crowdLevel,
+          },
+          liveCheckins,
+          storyCount: activeStories,
+          currentEvents,
+          friendsHere,
+        });
+        const tier = toTier(crowdPulse.pulseScore);
 
         return {
           ...venue,
+          crowdPulse,
           partyScore: {
             ...score,
             venueId: venue.id,
@@ -809,10 +832,10 @@ export default function SafariRadarExperience() {
             placeholders: (partyScores.scoresByVenueId[venue.id] || emptyPartyScore(venue.id)).placeholders,
           },
           tier,
-          liveCheckins: metrics?.liveCheckins || 0,
-          activeStories: metrics?.activeStories || 0,
-          currentEvents: metrics?.currentEvents || venueEvents.length,
-          friendsHere: metrics?.friendsHere || 0,
+          liveCheckins,
+          activeStories,
+          currentEvents,
+          friendsHere,
           currentEvent: currentEvent?.title || null,
           currentEntertainment: currentEvent?.performerName || currentEvent?.eventType || null,
           currentEventId: currentEvent?.id || null,
@@ -821,7 +844,7 @@ export default function SafariRadarExperience() {
           openNow: isOpenNow(venue.currentStatus),
         } as RadarHotspot;
       })
-      .sort((left, right) => right.partyScore.score - left.partyScore.score);
+      .sort((left, right) => right.crowdPulse.pulseScore - left.crowdPulse.pulseScore);
   }, [eventsByVenueId, liveMetrics.metricsByVenueId, mapCenter, partyScores.scoresByVenueId, userLocation, venues]);
 
   const venueTypeOptions = useMemo(() => {
@@ -843,7 +866,7 @@ export default function SafariRadarExperience() {
       crowdFilter,
     });
     return hotspots.filter((hotspot) => {
-      if (hotspot.partyScore.score < minScore) {
+      if (hotspot.crowdPulse.pulseScore < minScore) {
         return false;
       }
       if (hotspot.distanceMiles !== null && hotspot.distanceMiles > maxDistanceMiles) {
@@ -936,6 +959,11 @@ export default function SafariRadarExperience() {
       ...current,
       [key]: !current[key],
     }));
+  }, []);
+
+  const expandSearchRadius = useCallback(() => {
+    setMaxDistanceMiles((current) => Math.min(50, current + 10));
+    setMinScore((current) => Math.max(0, current - 8));
   }, []);
 
   return (
@@ -1032,7 +1060,7 @@ export default function SafariRadarExperience() {
                     icon={createClusterIcon(cluster.hotspots)}
                     eventHandlers={{
                       click: () => {
-                        const top = [...cluster.hotspots].sort((left, right) => right.partyScore.score - left.partyScore.score)[0];
+                        const top = [...cluster.hotspots].sort((left, right) => right.crowdPulse.pulseScore - left.crowdPulse.pulseScore)[0];
                         traceSetState("focusTarget", 920, { lat: cluster.lat, lng: cluster.lng, zoom: Math.min(mapZoom + 1, 17) });
                         setFocusTarget({ lat: cluster.lat, lng: cluster.lng, zoom: Math.min(mapZoom + 1, 17) });
                         traceSetState("selectedHotspotId", 921, top.id);
@@ -1063,10 +1091,10 @@ export default function SafariRadarExperience() {
                       center={[hotspot.latitude, hotspot.longitude]}
                       radius={style.glowRadius}
                       pathOptions={{
-                        color: hotspot.tier === "Legendary" ? "#ff7b00" : hotspot.tier === "Hot" ? "#f43f5e" : "#38bdf8",
-                        opacity: hotspot.tier === "Legendary" ? 0.48 : 0.24,
-                        fillColor: hotspot.tier === "Legendary" ? "#ff7b00" : hotspot.tier === "Hot" ? "#f43f5e" : "#38bdf8",
-                        fillOpacity: hotspot.tier === "Legendary" ? 0.16 : 0.08,
+                        color: style.haloColor,
+                        opacity: 0.28,
+                        fillColor: style.haloColor,
+                        fillOpacity: 0.1,
                       }}
                     />
                   )}
@@ -1077,73 +1105,76 @@ export default function SafariRadarExperience() {
 
           {selectedHotspot && (
             <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[600] md:inset-x-auto md:left-4 md:w-[440px]">
-              <article className="pointer-events-auto overflow-hidden rounded-3xl border border-white/20 bg-white/12 backdrop-blur-xl">
-                <div className="relative h-36 w-full bg-[#0d1328]">
-                  {selectedHotspot.imageUrl ? (
-                    <img src={selectedHotspot.imageUrl} alt={selectedHotspot.name} className="h-full w-full object-cover opacity-90" />
-                  ) : (
-                    <div className="h-full w-full bg-[linear-gradient(120deg,#1f2937_0%,#111827_55%,#0f172a_100%)]" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent" />
-                  <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-semibold text-white">{selectedHotspot.name}</h2>
-                      <p className="text-xs text-white/75">{selectedHotspot.tier} • {formatMiles(selectedHotspot.distanceMiles)} • {selectedHotspot.openNow ? "Open Now" : "Likely Closed"}</p>
+              <div className="pointer-events-auto">
+                <CrowdPulseCard
+                  venueHref={selectedHotspot.currentEventId ? `/events/${selectedHotspot.currentEventId}` : `/venues/${selectedHotspot.slug}`}
+                  venueName={selectedHotspot.name}
+                  venueCategory={selectedHotspot.venueType}
+                  statusLabel={getVenueStatusLabel({ openNow: selectedHotspot.openNow, currentStatus: selectedHotspot.currentStatus })}
+                  distanceLabel={formatMiles(selectedHotspot.distanceMiles)}
+                  pulse={selectedHotspot.crowdPulse}
+                  friendsHereCount={selectedHotspot.friendsHere}
+                  currentVibe={resolveCurrentVibe({
+                    musicGenres: selectedHotspot.musicGenres,
+                    liveEventTypes: selectedHotspot.currentEventType ? [selectedHotspot.currentEventType] : [],
+                    venueType: selectedHotspot.venueType,
+                  })}
+                  imageUrl={selectedHotspot.imageUrl}
+                  currentEvent={selectedHotspot.currentEvent}
+                  currentEntertainment={selectedHotspot.currentEntertainment}
+                  liveSignals={[
+                    { key: "checkins", icon: "👥", label: "Live Check-ins", value: selectedHotspot.liveCheckins },
+                    { key: "stories", icon: "📸", label: "Stories", value: selectedHotspot.activeStories },
+                    { key: "lit", icon: "🔥", label: "Lit Activity", value: null },
+                    { key: "saves", icon: "❤️", label: "Saves", value: null },
+                  ]}
+                  onJoinLabel={selectedHotspot.currentEventId ? "Join Party" : "View Venue"}
+                  footerAction={
+                    <VenueCheckInButton
+                      venueId={selectedHotspot.id}
+                      compact={false}
+                      onCountChange={() => {
+                        radarTrace("SafariRadarExperience", "callback:onCountChange", {
+                          line: 1049,
+                          venueId: selectedHotspot.id,
+                        });
+                        void liveMetrics.refresh([selectedHotspot.id]);
+                        void partyScores.refresh([selectedHotspot.id], true);
+                      }}
+                      className="rounded-full border border-fuchsia-300/40 bg-fuchsia-500/20 px-4 py-2.5 text-sm font-semibold text-fuchsia-100"
+                    />
+                  }
+                  supplementalContent={
+                    <div className="grid grid-cols-3 gap-2">
+                      <Link href={`/venues/${selectedHotspot.slug}`} className="rounded-2xl border border-white/20 bg-white/8 px-3 py-2 text-center text-sm font-semibold text-white">View Venue</Link>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${selectedHotspot.latitude},${selectedHotspot.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-2xl border border-white/20 bg-white/8 px-3 py-2 text-center text-sm font-semibold text-white"
+                      >
+                        Directions
+                      </a>
+                      <Link href="/dashboard" className="rounded-2xl border border-cyan-300/30 bg-cyan-400/12 px-3 py-2 text-center text-sm font-semibold text-cyan-100">View Stories</Link>
                     </div>
-                    <span className="rounded-full bg-black/50 px-3 py-1 text-sm font-semibold text-orange-200">
-                      {Math.round(selectedHotspot.partyScore.score)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid gap-2 px-3 pb-3 pt-3 text-sm text-white/85 md:grid-cols-2">
-                  <p>Crowd Level: <span className="text-white">{selectedHotspot.partyScore.crowdLevel}</span></p>
-                  <p>Momentum: <span className="text-white">{selectedHotspot.partyScore.momentum >= 0 ? "+" : ""}{selectedHotspot.partyScore.momentum}</span></p>
-                  <p>Trend: <span className="text-white">{selectedHotspot.partyScore.trend}</span></p>
-                  <p>Friends Here: <span className="text-white">{selectedHotspot.friendsHere}</span></p>
-                  <p>Stories: <span className="text-white">{selectedHotspot.activeStories}</span></p>
-                  <p>Check-ins: <span className="text-white">{selectedHotspot.liveCheckins}</span></p>
-                  <p className="md:col-span-2">Current Event: <span className="text-white">{selectedHotspot.currentEvent || "No event listed"}</span></p>
-                  <p className="md:col-span-2">Current Entertainment: <span className="text-white">{selectedHotspot.currentEntertainment || "Open format"}</span></p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 px-3 pb-3">
-                  <Link href={`/venues/${selectedHotspot.slug}`} className="rounded-2xl bg-white px-3 py-2 text-center text-sm font-semibold text-black">View Venue</Link>
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${selectedHotspot.latitude},${selectedHotspot.longitude}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-white/30 bg-white/10 px-3 py-2 text-center text-sm font-semibold text-white"
-                  >
-                    Directions
-                  </a>
-                  <Link href="/dashboard" className="rounded-2xl border border-cyan-300/40 bg-cyan-400/15 px-3 py-2 text-center text-sm font-semibold text-cyan-100">View Stories</Link>
-                  <Link href={selectedHotspot.currentEventId ? `/events/${selectedHotspot.currentEventId}` : `/venues/${selectedHotspot.slug}`} className="rounded-2xl border border-orange-300/40 bg-orange-400/20 px-3 py-2 text-center text-sm font-semibold text-orange-100">Join Party</Link>
-                </div>
-
-                <div className="px-3 pb-3">
-                  <VenueCheckInButton
-                    venueId={selectedHotspot.id}
-                    compact={false}
-                    onCountChange={() => {
-                      radarTrace("SafariRadarExperience", "callback:onCountChange", {
-                        line: 1049,
-                        venueId: selectedHotspot.id,
-                      });
-                      void liveMetrics.refresh([selectedHotspot.id]);
-                      void partyScores.refresh([selectedHotspot.id], true);
-                    }}
-                    className="w-full rounded-2xl border border-fuchsia-300/40 bg-fuchsia-500/20 px-4 py-2.5 text-sm font-semibold text-fuchsia-100"
-                  />
-                </div>
-              </article>
+                  }
+                />
+              </div>
             </div>
           )}
 
           {filteredHotspots.length === 0 && !loading && (
             <div className="absolute inset-x-4 top-4 z-[650] rounded-2xl border border-white/20 bg-[#0a0f1f]/85 p-4 backdrop-blur">
-              <p className="text-sm font-semibold text-white">No venues are currently active nearby.</p>
+              <p className="text-sm font-semibold text-white">Nothing is trending nearby yet.</p>
+              <p className="mt-1 text-xs text-white/70">Building tonight&apos;s pulse. We&apos;re collecting live check-ins, stories, events, and venue activity.</p>
               <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={expandSearchRadius}
+                  className="rounded-full border border-cyan-300/35 bg-cyan-500/18 px-3 py-1.5 text-xs font-semibold text-cyan-100"
+                >
+                  Expand Search Radius
+                </button>
                 <Link href="/events" className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black">Browse Events</Link>
                 <Link href="/profiles" className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white">Explore Venues</Link>
               </div>
@@ -1212,35 +1243,60 @@ export default function SafariRadarExperience() {
 
             <div className="space-y-3">
               {filteredHotspots.map((hotspot) => (
-                <button
-                  key={hotspot.id}
-                  type="button"
-                  onClick={() => {
-                    setViewMode("map");
-                    openHotspot(hotspot);
-                  }}
-                  className="w-full rounded-3xl border border-white/20 bg-white/10 p-4 text-left transition hover:bg-white/15"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-lg font-semibold text-white">{hotspot.name}</p>
-                      <p className="text-xs text-white/65">{hotspot.tier} • {formatMiles(hotspot.distanceMiles)} • {hotspot.currentEvent || "No current event"}</p>
-                    </div>
-                    <span className="rounded-full bg-black/35 px-3 py-1 text-sm font-semibold text-orange-100">{Math.round(hotspot.partyScore.score)}</span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-white/80 md:grid-cols-5">
-                    <p>Trend: {hotspot.partyScore.trend}</p>
-                    <p>Momentum: {hotspot.partyScore.momentum >= 0 ? "+" : ""}{hotspot.partyScore.momentum}</p>
-                    <p>Stories: {hotspot.activeStories}</p>
-                    <p>Check-ins: {hotspot.liveCheckins}</p>
-                    <p>Friends: {hotspot.friendsHere}</p>
-                  </div>
-                </button>
+                <div key={hotspot.id} className="w-full">
+                  <CrowdPulseCard
+                    venueHref={`/venues/${hotspot.slug}`}
+                    venueName={hotspot.name}
+                    venueCategory={hotspot.venueType}
+                    statusLabel={getVenueStatusLabel({ openNow: hotspot.openNow, currentStatus: hotspot.currentStatus })}
+                    distanceLabel={formatMiles(hotspot.distanceMiles)}
+                    pulse={hotspot.crowdPulse}
+                    friendsHereCount={hotspot.friendsHere}
+                    currentVibe={resolveCurrentVibe({
+                      musicGenres: hotspot.musicGenres,
+                      liveEventTypes: hotspot.currentEventType ? [hotspot.currentEventType] : [],
+                      venueType: hotspot.venueType,
+                    })}
+                    currentEvent={hotspot.currentEvent}
+                    currentEntertainment={hotspot.currentEntertainment}
+                    liveSignals={[
+                      { key: "checkins", icon: "👥", label: "Live Check-ins", value: hotspot.liveCheckins },
+                      { key: "stories", icon: "📸", label: "Stories", value: hotspot.activeStories },
+                      { key: "lit", icon: "🔥", label: "Lit Activity", value: null },
+                      { key: "saves", icon: "❤️", label: "Saves", value: null },
+                    ]}
+                    supplementalContent={
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewMode("map");
+                          openHotspot(hotspot);
+                        }}
+                        className="w-full rounded-2xl border border-white/20 bg-white/8 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/12"
+                      >
+                        Open on Map
+                      </button>
+                    }
+                    compact
+                  />
+                </div>
               ))}
 
               {filteredHotspots.length === 0 ? (
                 <div className="rounded-2xl border border-white/20 bg-white/10 p-4 text-white/70">
-                  No venues are currently active nearby.
+                  <p className="font-semibold text-white">Nothing is trending nearby yet.</p>
+                  <p className="mt-1 text-xs">Building tonight&apos;s pulse. We&apos;re collecting live check-ins, stories, events, and venue activity.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={expandSearchRadius}
+                      className="rounded-full border border-cyan-300/35 bg-cyan-500/18 px-3 py-1.5 text-xs font-semibold text-cyan-100"
+                    >
+                      Expand Search Radius
+                    </button>
+                    <Link href="/events" className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-black">Browse Events</Link>
+                    <Link href="/profiles" className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white">Explore Venues</Link>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -1266,7 +1322,7 @@ export default function SafariRadarExperience() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="text-sm">
-                  <span className="mb-1 block text-white/70">Party Score ≥ {minScore}</span>
+                  <span className="mb-1 block text-white/70">Crowd Pulse ≥ {minScore}</span>
                   <input
                     type="range"
                     min={0}
@@ -1393,42 +1449,30 @@ export default function SafariRadarExperience() {
         }
 
         .radar-hotspot.quiet {
-          width: 30px;
-          height: 30px;
-          background: radial-gradient(circle at 30% 25%, #64748b, #334155 65%);
+          background: radial-gradient(circle at 30% 25%, #4ade80, #15803d 65%);
         }
 
         .radar-hotspot.picking {
-          width: 38px;
-          height: 38px;
-          background: radial-gradient(circle at 28% 24%, #0ea5e9, #155e75 66%);
+          background: radial-gradient(circle at 28% 24%, #a3e635, #65a30d 66%);
         }
 
         .radar-hotspot.active {
-          width: 44px;
-          height: 44px;
-          background: radial-gradient(circle at 28% 24%, #22d3ee, #0f766e 66%);
+          background: radial-gradient(circle at 28% 24%, #fde047, #ca8a04 66%);
         }
 
         .radar-hotspot.busy {
-          width: 52px;
-          height: 52px;
-          background: radial-gradient(circle at 28% 24%, #f59e0b, #c2410c 66%);
+          background: radial-gradient(circle at 28% 24%, #fb923c, #ea580c 66%);
           box-shadow: 0 0 24px rgba(249, 115, 22, 0.48), 0 12px 28px rgba(0, 0, 0, 0.45);
         }
 
         .radar-hotspot.hot {
-          width: 60px;
-          height: 60px;
-          background: radial-gradient(circle at 28% 24%, #f43f5e, #9d174d 66%);
+          background: radial-gradient(circle at 28% 24%, #f97316, #dc2626 66%);
           box-shadow: 0 0 30px rgba(244, 63, 94, 0.52), 0 12px 28px rgba(0, 0, 0, 0.45);
         }
 
         .radar-hotspot.legendary {
-          width: 68px;
-          height: 68px;
-          background: radial-gradient(circle at 28% 24%, #ffb04f, #f97316 66%);
-          box-shadow: 0 0 36px rgba(249, 115, 22, 0.68), 0 12px 28px rgba(0, 0, 0, 0.45);
+          background: radial-gradient(circle at 28% 24%, #fb7185, #dc2626 66%);
+          box-shadow: 0 0 36px rgba(239, 68, 68, 0.62), 0 12px 28px rgba(0, 0, 0, 0.45);
           animation: radar-legendary 1.6s ease-in-out infinite;
         }
 
@@ -1440,7 +1484,7 @@ export default function SafariRadarExperience() {
         .radar-cluster {
           width: 56px;
           height: 56px;
-          background: radial-gradient(circle at 28% 24%, #c4b5fd, #7c3aed 66%);
+          background: radial-gradient(circle at 28% 24%, #fbbf24, #f97316 66%);
         }
 
         @keyframes radar-pulse {
@@ -1467,6 +1511,13 @@ export default function SafariRadarExperience() {
           }
           100% {
             transform: scale(1);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .radar-hotspot::after,
+          .radar-hotspot.legendary {
+            animation: none;
           }
         }
       `}</style>
