@@ -14,11 +14,6 @@ if (!source.includes(importLine)) {
   );
 }
 
-source = source.replace(
-  'import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";',
-  'import { Circle, MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";',
-);
-
 const iconFunction = `
 function createLivePresenceIcon(isFriend: boolean) {
   return L.divIcon({
@@ -28,19 +23,10 @@ function createLivePresenceIcon(isFriend: boolean) {
     iconAnchor: [17, 17],
   });
 }
-
-function formatPresenceAge(updatedAt: string) {
-  const ageSeconds = Math.max(0, Math.floor((Date.now() - Date.parse(updatedAt)) / 1000));
-  if (ageSeconds < 45) return "Live now";
-  const minutes = Math.max(1, Math.floor(ageSeconds / 60));
-  return `Updated ${minutes} min ago`;
-}
 `;
 
 if (!source.includes("function createLivePresenceIcon")) {
   source = source.replace("function MapTracker({ onZoomChange }: MapTrackerProps) {", `${iconFunction}\nfunction MapTracker({ onZoomChange }: MapTrackerProps) {`);
-} else if (!source.includes("function formatPresenceAge")) {
-  source = source.replace("function MapTracker({ onZoomChange }: MapTrackerProps) {", `${iconFunction.split("\n\nfunction formatPresenceAge")[1] ? "" : ""}function formatPresenceAge(updatedAt: string) {\n  const ageSeconds = Math.max(0, Math.floor((Date.now() - Date.parse(updatedAt)) / 1000));\n  if (ageSeconds < 45) return \"Live now\";\n  const minutes = Math.max(1, Math.floor(ageSeconds / 60));\n  return `Updated ${minutes} min ago`;\n}\n\nfunction MapTracker({ onZoomChange }: MapTrackerProps) {`);
 }
 
 const hookLine = "  const livePresence = useLivePartyPresence();";
@@ -90,14 +76,7 @@ const markersBlock = `
                   position={[presence.lat, presence.lng]}
                   icon={createLivePresenceIcon(presence.privacyMode === "friends")}
                   zIndexOffset={900}
-                >
-                  <Tooltip direction="top" offset={[0, -14]} opacity={0.95}>
-                    <div className="text-xs font-semibold">
-                      {presence.privacyMode === "friends" ? "Friend on Safari" : "PartySafari user"}
-                      <div className="text-[10px] font-normal opacity-70">{formatPresenceAge(presence.updatedAt)}</div>
-                    </div>
-                  </Tooltip>
-                </Marker>
+                />
               ))}
 `;
 
@@ -105,11 +84,6 @@ if (!source.includes("presence.userId !== livePresence.userId")) {
   source = source.replace(
     "            <TileLayer\n",
     `${markersBlock}\n            <TileLayer\n`,
-  );
-} else if (!source.includes("formatPresenceAge(presence.updatedAt)")) {
-  source = source.replace(
-    `                  zIndexOffset={900}\n                />`,
-    `                  zIndexOffset={900}\n                >\n                  <Tooltip direction="top" offset={[0, -14]} opacity={0.95}>\n                    <div className="text-xs font-semibold">\n                      {presence.privacyMode === "friends" ? "Friend on Safari" : "PartySafari user"}\n                      <div className="text-[10px] font-normal opacity-70">{formatPresenceAge(presence.updatedAt)}</div>\n                    </div>\n                  </Tooltip>\n                </Marker>`,
   );
 }
 
@@ -124,12 +98,11 @@ const liveStyles = `
           background: radial-gradient(circle at 30% 25%, #67e8f9, #0369a1 70%);
           box-shadow: 0 0 0 7px rgba(34, 211, 238, 0.14), 0 8px 24px rgba(0, 0, 0, 0.5);
           animation: live-person-pulse 2.4s ease-in-out infinite;
-          transition: transform 300ms ease, filter 300ms ease, opacity 300ms ease;
+          transition: filter 250ms ease, opacity 250ms ease;
         }
 
         .radar-live-person:hover {
-          transform: scale(1.12);
-          filter: brightness(1.18);
+          filter: brightness(1.2);
         }
 
         .radar-live-person.friend {
@@ -147,14 +120,14 @@ const liveStyles = `
 
 if (!source.includes(".radar-live-person")) {
   source = source.replace("        .radar-map .leaflet-tile {", `${liveStyles}\n        .radar-map .leaflet-tile {`);
-} else if (!source.includes("transition: transform 300ms ease")) {
+} else if (!source.includes("transition: filter 250ms ease")) {
   source = source.replace(
     "          animation: live-person-pulse 2.4s ease-in-out infinite;",
-    "          animation: live-person-pulse 2.4s ease-in-out infinite;\n          transition: transform 300ms ease, filter 300ms ease, opacity 300ms ease;",
+    "          animation: live-person-pulse 2.4s ease-in-out infinite;\n          transition: filter 250ms ease, opacity 250ms ease;",
   );
   source = source.replace(
     "        .radar-live-person.friend {",
-    "        .radar-live-person:hover {\n          transform: scale(1.12);\n          filter: brightness(1.18);\n        }\n\n        .radar-live-person.friend {",
+    "        .radar-live-person:hover {\n          filter: brightness(1.2);\n        }\n\n        .radar-live-person.friend {",
   );
 }
 
