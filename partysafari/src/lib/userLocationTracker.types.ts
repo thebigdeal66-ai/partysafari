@@ -1,0 +1,1 @@
+export const USER_LOCATION_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
