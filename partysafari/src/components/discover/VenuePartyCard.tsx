@@ -207,6 +207,7 @@ export default function VenuePartyCard({
 
       <div className="flex flex-1 flex-col gap-4 p-4 sm:p-5">
         <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/75">Crowd Pulse State</p>
           {showHeadline ? <p className="text-sm font-semibold text-white">{score.headline}</p> : null}
           <p className={`text-sm text-white/65 ${showHeadline ? "mt-1" : ""}`}>{score.detail}</p>
         </div>

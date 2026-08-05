@@ -92,11 +92,15 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
         ) : null}
 
         <SectionShell
-          eyebrow="⚡ Crowd Pulse"
+          eyebrow="LIVE NIGHTLIFE INTELLIGENCE"
           title="Crowd Pulse"
-          description="See where tonight's energy is building in real time."
+          description="See where tonight's energy is building through live check-ins, stories, events, and activity."
           action={<SectionLink href="/map">View Crowd Pulse</SectionLink>}
         >
+          <div className="mb-4 rounded-2xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100/85">Crowd Pulse Live Board</p>
+            <p className="mt-1 text-sm text-white/75">Party Score is now presented as a supporting metric inside each venue pulse card.</p>
+          </div>
           {founderCrowdPulseAccess ? (
             <div className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-500/10 p-3.5">
               <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-amber-200/75">Founder-only detail</p>
