@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node ./scripts/patch-radar-locate-me.mjs && node ./scripts/patch-radar-live-presence.mjs && node ./scripts/patch-radar-empty-state.mjs && node ./scripts/patch-radar-venue-pulse.mjs && node ./scripts/patch-radar-marker-identity.mjs && node ./scripts/patch-radar-live-intelligence.mjs && node ./scripts/patch-radar-venue-intelligence-card.mjs && node ./scripts/patch-radar-mobile-venue-card.mjs && next dev --webpack",
-    "build": "node ./scripts/patch-radar-locate-me.mjs && node ./scripts/patch-radar-live-presence.mjs && node ./scripts/patch-radar-empty-state.mjs && node ./scripts/patch-radar-venue-pulse.mjs && node ./scripts/patch-radar-marker-identity.mjs && node ./scripts/patch-radar-live-intelligence.mjs && node ./scripts/patch-radar-venue-intelligence-card.mjs && node ./scripts/patch-radar-mobile-venue-card.mjs && next build",
+    "dev": "node ./scripts/patch-radar-locate-me.mjs && node ./scripts/patch-radar-live-presence.mjs && node ./scripts/patch-radar-empty-state.mjs && node ./scripts/patch-radar-venue-pulse.mjs && node ./scripts/patch-radar-marker-identity.mjs && node ./scripts/patch-radar-live-intelligence.mjs && node ./scripts/patch-radar-venue-intelligence-card.mjs && node ./scripts/patch-radar-mobile-venue-card.mjs && node ./scripts/patch-radar-city-go.mjs && next dev --webpack",
+    "build": "node ./scripts/patch-radar-locate-me.mjs && node ./scripts/patch-radar-live-presence.mjs && node ./scripts/patch-radar-empty-state.mjs && node ./scripts/patch-radar-venue-pulse.mjs && node ./scripts/patch-radar-marker-identity.mjs && node ./scripts/patch-radar-live-intelligence.mjs && node ./scripts/patch-radar-venue-intelligence-card.mjs && node ./scripts/patch-radar-mobile-venue-card.mjs && node ./scripts/patch-radar-city-go.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "tsc -p tsconfig.test.json && node ./scripts/run-tests.js",
