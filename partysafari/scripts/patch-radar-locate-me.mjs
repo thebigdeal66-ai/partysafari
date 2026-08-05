@@ -15,7 +15,7 @@ const newBlock = `        traceSetState("userLocation", 472, location);
         setUserLocation(location);
         setSelectedCity("nearby");
         setViewMode("map");
-        setFocusTarget({ lat: location.lat, lng: location.lng, zoom: Math.max(mapZoom, 14) });
+        setFocusTarget({ lat: location.lat, lng: location.lng, zoom: 15 });
         traceSetState("geoError", 474, null);
         setGeoError(null);`;
 
@@ -27,11 +27,7 @@ if (!source.includes(oldBlock)) {
   throw new Error("Safari Radar geolocation success block was not found.");
 }
 
-let patched = source.replace(oldBlock, newBlock);
-patched = patched.replace(
-  `  }, []);\n\n  useEffect(() => {\n    logEffectRun("request-geolocation-on-mount"`,
-  `  }, [mapZoom]);\n\n  useEffect(() => {\n    logEffectRun("request-geolocation-on-mount"`,
-);
+const patched = source.replace(oldBlock, newBlock);
 
 await writeFile(target, patched, "utf8");
-console.log("Applied Safari Radar Locate Me recenter patch.");
+console.log("Applied Safari Radar Locate Me recenter patch without tying geolocation to map zoom changes.");
