@@ -133,9 +133,28 @@ export default function LitButton({ venueId, onLit, className = "" }: LitButtonP
     } else if (outcome.status === "cooling-down") {
       setMessage("You already marked this venue lit. Try again when the timer ends.");
     } else if (outcome.status === "ineligible") {
-      setMessage("Check in here first, then tap Lit while you are still at the venue.");
+      const viewer = await fetchLitViewerContext([venueId], { supabase });
+      const latestCheckin = viewer.checkinByVenueId[venueId] || null;
+      const latestEligibility = evaluateLitEligibility({
+        isAuthenticated: Boolean(viewer.userId),
+        checkin: latestCheckin,
+        viewerExpiresAt: litState.viewerExpiresAt,
+        litsInQuotaWindow: viewer.litsInQuotaWindow,
+      });
+
+      setUserId(viewer.userId);
+      setCheckin(latestCheckin);
+      setQuotaCount(viewer.litsInQuotaWindow);
+
+      if (latestEligibility.reason) {
+        setMessage(litIneligibilityMessage(latestEligibility.reason));
+      } else {
+        setMessage("Your check-in is active, but Lit could not verify eligibility yet. Try again in a moment.");
+      }
     } else if (outcome.status === "unauthenticated") {
       window.location.href = "/login";
+    } else if (outcome.status === "unavailable") {
+      setMessage("Lit is temporarily unavailable while the live signal service reconnects.");
     } else if (outcome.status === "error") {
       setMessage(outcome.message);
     }
