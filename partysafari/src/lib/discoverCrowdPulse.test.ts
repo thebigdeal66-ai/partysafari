@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildCrowdPulseSnapshot,
   createCrowdPulseCalibrationDraft,
   hasMeaningfulCrowdPulseSignals,
   resolveCrowdPulseCalibrationAnchor,
@@ -78,4 +79,60 @@ test("low-data signal detection stays truthful and binary", () => {
     ]),
     true
   );
+});
+
+test("crowd pulse snapshot keeps party score as primary live pulse when present", () => {
+  const snapshot = buildCrowdPulseSnapshot({
+    partyScore: {
+      score: 78,
+      trend: "up",
+      momentum: 9,
+      confidence: 0.82,
+      crowdLevel: "Busy",
+    },
+    liveCheckins: 4,
+    storyCount: 2,
+    currentEvents: 1,
+    friendsHere: 3,
+    litSignals: 1,
+  });
+
+  assert.equal(snapshot.pulseScore, 78);
+  assert.equal(snapshot.trendDirection, "up");
+  assert.equal(snapshot.trendLabel, "Rising Fast");
+  assert.equal(snapshot.momentum, 9);
+  assert.equal(snapshot.confidenceScore, 82);
+  assert.equal(snapshot.confidenceBand, "High");
+  assert.equal(snapshot.stateLabel, "Busy");
+  assert.equal(snapshot.energyLabel, "High");
+  assert.equal(snapshot.source, "live");
+  assert.equal(snapshot.activity.total, 11);
+});
+
+test("crowd pulse snapshot derives a safe fallback when live score is absent", () => {
+  const snapshot = buildCrowdPulseSnapshot({
+    liveCheckins: 2,
+    storyCount: 1,
+    currentEvents: 1,
+    friendsHere: 1,
+    litSignals: 0,
+  });
+
+  assert.equal(snapshot.pulseScore > 22, true);
+  assert.equal(snapshot.source, "live");
+  assert.equal(snapshot.trendDirection, "stable");
+  assert.equal(snapshot.trendLabel, "Stable");
+  assert.equal(snapshot.confidenceBand, "Medium");
+  assert.equal(snapshot.confidenceScore >= 15, true);
+  assert.equal(snapshot.activity.total, 5);
+});
+
+test("crowd pulse snapshot remains explicit in no-signal demo mode", () => {
+  const snapshot = buildCrowdPulseSnapshot({});
+
+  assert.equal(snapshot.pulseScore, 22);
+  assert.equal(snapshot.source, "demo");
+  assert.equal(snapshot.activity.total, 0);
+  assert.equal(snapshot.energyLabel, "Low");
+  assert.equal(snapshot.confidenceScore >= 15, true);
 });

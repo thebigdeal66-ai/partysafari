@@ -102,33 +102,38 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
             <p className="mt-1 text-sm text-white/75">Party Score is now presented as a supporting metric inside each venue pulse card.</p>
           </div>
           {founderCrowdPulseAccess ? (
-            <div className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-500/10 p-3.5">
-              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-amber-200/75">Founder-only detail</p>
-              <p className="mt-1 text-sm text-white/75">
-                Canonical Party Score ranking and PSI evidence are shown as rendered so calibration stays tied to real venues only.
-              </p>
-              {!hasSignals ? (
-                <div className="mt-2 space-y-1 text-xs text-white/65">
-                  <p>Building tonight&apos;s pulse</p>
-                  <p>Live check-ins, stories, events, and Lit activity will shape this venue&apos;s pulse as the night develops.</p>
-                  <p>Activity is currently below the privacy threshold.</p>
-                </div>
-              ) : null}
-              {calibrationAnchor ? (
-                <FounderCalibrationControl
-                  targets={[{ feature: "crowdPulse", label: calibrationAnchor.label }]}
-                  onSubmit={async (_feature, judgment) =>
-                    submitCalibrationFeedback(
-                      createCrowdPulseCalibrationDraft({
-                        anchor: calibrationAnchor,
-                        accurate: judgment.accurate,
-                        note: judgment.note,
-                      })
-                    )
-                  }
-                />
-              ) : null}
-            </div>
+            <details className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-500/10 p-3.5">
+              <summary className="cursor-pointer list-none text-sm font-semibold text-amber-100 [&::-webkit-details-marker]:hidden">
+                Founder Calibration
+              </summary>
+              <div className="mt-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-amber-200/75">Founder-only detail</p>
+                <p className="mt-1 text-sm text-white/75">
+                  Canonical Party Score ranking and PSI evidence are shown as rendered so calibration stays tied to real venues only.
+                </p>
+                {!hasSignals ? (
+                  <div className="mt-2 space-y-1 text-xs text-white/65">
+                    <p>Building tonight&apos;s pulse</p>
+                    <p>Live check-ins, stories, events, and Lit activity will shape this venue&apos;s pulse as the night develops.</p>
+                    <p>Activity is currently below the privacy threshold.</p>
+                  </div>
+                ) : null}
+                {calibrationAnchor ? (
+                  <FounderCalibrationControl
+                    targets={[{ feature: "crowdPulse", label: calibrationAnchor.label }]}
+                    onSubmit={async (_feature, judgment) =>
+                      submitCalibrationFeedback(
+                        createCrowdPulseCalibrationDraft({
+                          anchor: calibrationAnchor,
+                          accurate: judgment.accurate,
+                          note: judgment.note,
+                        })
+                      )
+                    }
+                  />
+                ) : null}
+              </div>
+            </details>
           ) : null}
           {states.hotRightNow.error ? <SectionError message={states.hotRightNow.error} /> : null}
           {states.hotRightNow.loading && data.hotRightNow.length === 0 ? (
@@ -153,6 +158,7 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
                   imageUrl={venue.imageUrl || venue.photoUrl}
                   city={venue.city}
                   state={venue.state}
+                  currentStatus={venue.currentStatus}
                   partyScore={venue.partyScore}
                   currentEvent={venue.currentEvent}
                   currentEntertainment={venue.currentEntertainment}
@@ -160,7 +166,11 @@ const DiscoverTonightExperience = memo(function DiscoverTonightExperience() {
                   friendsHereCount={venue.friendsHereCount}
                   storyCount={venue.storyCount}
                   liveCheckins={venue.liveCheckins}
+                  currentEvents={venue.currentEvents}
                   openNow={venue.openNow}
+                  musicGenres={venue.musicGenres}
+                  liveEventTypes={venue.liveEventTypes}
+                  interestedRsvps={venue.interestedRsvps}
                   litCount={lit.litByVenueId[venue.id]?.litCount ?? 0}
                   litHasViewer={lit.litByVenueId[venue.id]?.viewerHasLit ?? false}
                   litCooldownSeconds={Math.ceil((lit.cooldownMsByVenueId[venue.id] ?? 0) / 1000)}
