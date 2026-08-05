@@ -7,14 +7,13 @@ let source = fs.readFileSync(radarPath, "utf8");
 let css = fs.readFileSync(cssPath, "utf8");
 
 if (!source.includes("storyRingClass")) {
-  const original = `function createHotspotIcon(hotspot: RadarHotspot, selected: boolean) {\n  const style = toTierStyle(hotspot.tier);\n  const score = Math.max(0, Math.min(100, Math.round(hotspot.crowdPulse.pulseScore)));\n  const radius = Math.max(15, Math.min(38, Math.round(15 + score * 0.24)));\n  return L.divIcon({\n    className: "",\n    html: \`<button class="\${style.className}\${selected ? " selected" : ""}" style="width:\${radius * 2}px;height:\${radius * 2}px"><span>\${score}</span></button>\`,\n    iconSize: [radius * 2, radius * 2],\n    iconAnchor: [radius, radius],\n  });\n}`;
-
   const replacement = `function createHotspotIcon(hotspot: RadarHotspot, selected: boolean) {\n  const style = toTierStyle(hotspot.tier);\n  const score = Math.max(0, Math.min(100, Math.round(hotspot.crowdPulse.pulseScore)));\n  const radius = Math.max(15, Math.min(38, Math.round(15 + score * 0.24)));\n  const storyCount = Math.max(0, Math.round(hotspot.activeStories));\n  const storyRingClass = storyCount >= 8\n    ? " story-ring story-ring-trending"\n    : storyCount >= 3\n      ? " story-ring story-ring-active"\n      : storyCount > 0\n        ? " story-ring story-ring-recent"\n        : "";\n  const storyBadge = storyCount > 0\n    ? \`<span class="radar-story-count" aria-label="\${storyCount} active stories">\${storyCount > 99 ? "99+" : storyCount}</span>\`\n    : "";\n  return L.divIcon({\n    className: "",\n    html: \`<button class="\${style.className}\${selected ? " selected" : ""}\${storyRingClass}" style="width:\${radius * 2}px;height:\${radius * 2}px"><span>\${score}</span>\${storyBadge}</button>\`,\n    iconSize: [radius * 2 + (storyCount > 0 ? 8 : 0), radius * 2 + (storyCount > 0 ? 8 : 0)],\n    iconAnchor: [radius, radius],\n  });\n}`;
 
-  if (!source.includes(original)) {
+  const hotspotFunctionPattern = /function createHotspotIcon\(hotspot: RadarHotspot, selected: boolean\) \{[\s\S]*?\n\}\n\nfunction createClusterIcon/;
+  if (!hotspotFunctionPattern.test(source)) {
     throw new Error("Could not locate createHotspotIcon for story-ring patch.");
   }
-  source = source.replace(original, replacement);
+  source = source.replace(hotspotFunctionPattern, `${replacement}\n\nfunction createClusterIcon`);
   fs.writeFileSync(radarPath, source);
 }
 
