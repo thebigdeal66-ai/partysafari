@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node ./scripts/patch-radar-locate-me.mjs && next dev --webpack",
-    "build": "node ./scripts/patch-radar-locate-me.mjs && next build",
+    "dev": "node ./scripts/patch-radar-locate-me.mjs && node ./scripts/patch-radar-live-presence.mjs && next dev --webpack",
+    "build": "node ./scripts/patch-radar-locate-me.mjs && node ./scripts/patch-radar-live-presence.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "tsc -p tsconfig.test.json && node ./scripts/run-tests.js",
