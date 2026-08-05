@@ -61,7 +61,7 @@ source = source.replace(
   '    html: `<button class="radar-cluster ${style.className}"><span>${hotspots.length}</span><small>places</small></button>`,',
 );
 
-if (!source.includes("createUserLocationIcon()")) {
+if (!source.includes('icon={createUserLocationIcon()}')) {
   source = source.replace(
     "            <TileLayer\n",
     `            {userLocation ? (\n              <Marker position={[userLocation.lat, userLocation.lng]} icon={createUserLocationIcon()} zIndexOffset={1200}>\n                <Tooltip direction="top" offset={[0, -20]} opacity={0.96}>Your current location</Tooltip>\n              </Marker>\n            ) : null}\n\n            <TileLayer\n`,
