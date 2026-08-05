@@ -113,26 +113,30 @@ export function useLivePartyPresence() {
   useEffect(() => {
     let active = true;
 
-    void supabase.auth.getUser().then(({ data }) => {
+    void (async () => {
+      const userResult = await supabase.auth.getUser();
       if (!active) return;
-      const id = data.user?.id || null;
+
+      const id = userResult.data.user?.id || null;
       setUserId(id);
       if (!id) {
         setLoading(false);
         return;
       }
 
-      void supabase.from("user_live_presence")
+      const ownResult = await supabase
+        .from("user_live_presence")
         .select("privacy_mode")
         .eq("user_id", id)
-        .maybeSingle()
-        .then(({ data: own }) => {
-          if (!active) return;
-          const mode = own?.privacy_mode;
-          if (mode === "public" || mode === "friends" || mode === "invisible") setPrivacyModeState(mode);
-          setLoading(false);
-        });
-    });
+        .maybeSingle();
+
+      if (!active) return;
+      const mode = ownResult.data?.privacy_mode;
+      if (mode === "public" || mode === "friends" || mode === "invisible") {
+        setPrivacyModeState(mode);
+      }
+      setLoading(false);
+    })();
 
     return () => { active = false; };
   }, [supabase]);
