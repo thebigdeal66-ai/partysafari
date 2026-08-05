@@ -12,6 +12,37 @@ type VenueCheckInButtonProps = {
   showCount?: boolean;
 };
 
+type DevicePosition = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+};
+
+function requestDevicePosition(): Promise<DevicePosition> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("geolocation-unavailable"));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+      },
+      (error) => reject(error),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 12_000,
+      }
+    );
+  });
+}
+
 export default function VenueCheckInButton({
   venueId,
   onCheckedIn,
@@ -63,12 +94,13 @@ export default function VenueCheckInButton({
     }
 
     const countByVenueId = new Map<string, number>();
-    for (const row of (data || []) as any[]) {
-      const id = row.venue_id || row.id;
+    for (const row of (data || []) as Array<Record<string, unknown>>) {
+      const id = typeof row.venue_id === "string" ? row.venue_id : typeof row.id === "string" ? row.id : null;
       if (!id) {
         continue;
       }
-      countByVenueId.set(id, Number(row.live_count ?? row.count ?? row.checkins ?? 0));
+      const rawCount = row.live_count ?? row.count ?? row.checkins ?? 0;
+      countByVenueId.set(id, Number(rawCount));
     }
 
     const count = countByVenueId.get(venueId) || 0;
@@ -102,7 +134,6 @@ export default function VenueCheckInButton({
     };
   }, [refreshActiveCheckIn, refreshLiveCount, supabase]);
 
-  // Subscribe to realtime updates for this venue's check-ins
   useEffect(() => {
     const channel = supabase.channel(`venue-checkins-${venueId}`);
     channel.on(
@@ -136,16 +167,41 @@ export default function VenueCheckInButton({
     }
 
     setCheckingIn(true);
-    setMessage(null);
+    setMessage("Verifying your location...");
+
+    let position: DevicePosition;
+    try {
+      position = await requestDevicePosition();
+    } catch (error) {
+      setCheckingIn(false);
+      const code = typeof error === "object" && error && "code" in error ? Number((error as { code?: unknown }).code) : 0;
+      setMessage(
+        code === 1
+          ? "Location permission is required to check in. Allow location access and try again."
+          : "We could not verify your location. Move somewhere with a clearer GPS signal and try again."
+      );
+      return;
+    }
 
     const { error } = await supabase.rpc("check_in_to_venue", {
       p_venue_id: venueId,
+      p_latitude: position.latitude,
+      p_longitude: position.longitude,
+      p_accuracy_meters: position.accuracy,
     });
 
     setCheckingIn(false);
 
     if (error) {
       const rawMessage = (error.message || "").toLowerCase();
+      if (rawMessage.includes("outside venue geofence")) {
+        setMessage("You need to be at or very close to this venue to check in.");
+        return;
+      }
+      if (rawMessage.includes("valid device location required")) {
+        setMessage("We could not verify a valid device location. Try again with location services enabled.");
+        return;
+      }
       if (rawMessage.includes("already") || rawMessage.includes("duplicate")) {
         setAlreadyCheckedIn(true);
         setMessage("You are already checked in.");
@@ -198,6 +254,8 @@ export default function VenueCheckInButton({
       ? "rounded-full border border-orange-300/40 bg-orange-500/20 px-3 py-1 text-xs font-semibold text-orange-100 transition hover:bg-orange-500/30 disabled:cursor-not-allowed disabled:opacity-60"
       : "rounded-full border border-orange-300/40 bg-orange-500/20 px-4 py-2 text-sm font-semibold text-orange-100 transition hover:bg-orange-500/30 disabled:cursor-not-allowed disabled:opacity-60");
 
+  const isErrorMessage = message?.includes("Could not") || message?.includes("required") || message?.includes("need to be") || message?.includes("could not verify");
+
   return (
     <div className="flex flex-col gap-2">
       {alreadyCheckedIn ? (
@@ -219,11 +277,11 @@ export default function VenueCheckInButton({
           {!isAuthenticated
             ? "Sign In to Check In"
             : checkingIn
-              ? "Checking In..."
+              ? "Verifying Location..."
               : "I'm Here"}
         </button>
       )}
-      {message ? <p className={`text-xs ${message.includes("Could not") ? "text-red-400" : message.includes("Checked out") ? "text-blue-300" : "text-green-300"}`}>{message}</p> : null}
+      {message ? <p className={`text-xs ${isErrorMessage ? "text-red-400" : message.includes("checked out") ? "text-blue-300" : "text-green-300"}`}>{message}</p> : null}
       {showCount && <p className="text-xs text-white/60">{liveCount} checked in</p>}
     </div>
   );
