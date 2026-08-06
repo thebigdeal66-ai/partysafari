@@ -4,23 +4,29 @@ import path from "node:path";
 const filePath = path.resolve("src/app/venues/[slug]/page.tsx");
 let source = fs.readFileSync(filePath, "utf8");
 
-// This page previously used a Next Link pointed at an obsolete route. On mobile,
-// client-side routing also proved unreliable inside the layered hero section.
-// Use a native button with a hard same-origin navigation so the control always
-// returns to Safari Radar.
 source = source.replace('import Link from "next/link";\n', "");
 
-source = source.replace(
-  /<Link\s+href="\/(?:map|radar)"[^>]*>\s*Back to Map\s*<\/Link>/m,
-  `<button
-            type="button"
-            onClick={() => window.location.assign("/radar")}
-            className="relative z-50 mb-4 inline-flex min-h-12 w-fit touch-manipulation items-center rounded-full border border-white/25 bg-black/70 px-5 py-3 text-sm font-semibold text-white shadow-lg active:scale-[0.98]"
+const control = `<a
+            href="/radar"
+            target="_self"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              window.location.href = "/radar";
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              window.location.href = "/radar";
+            }}
+            className="relative z-[9999] mb-4 inline-flex min-h-12 w-fit touch-manipulation select-none items-center rounded-full border border-white/25 bg-black/70 px-5 py-3 text-sm font-semibold text-white shadow-lg pointer-events-auto active:scale-[0.98]"
             aria-label="Return to Safari Radar"
           >
             Back to Map
-          </button>`
+          </a>`;
+
+source = source.replace(
+  /<(?:Link|button|a)\b[^>]*(?:href="\/(?:map|radar)"|aria-label="Return to Safari Radar")[\s\S]*?>\s*Back to Map\s*<\/(?:Link|button|a)>/m,
+  control
 );
 
 fs.writeFileSync(filePath, source);
-console.log("Applied forced venue Back to Radar navigation.");
+console.log("Applied native Back to Radar anchor with pointer fallback.");
