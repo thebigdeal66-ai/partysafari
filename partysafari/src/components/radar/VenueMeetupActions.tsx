@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 
@@ -36,6 +37,17 @@ export default function VenueMeetupActions({ venueId, venueName, venueSlug, frie
     if (typeof window === "undefined") return `/venues/${venueSlug}`;
     return `${window.location.origin}/venues/${venueSlug}`;
   }, [venueSlug]);
+
+  const socialHeadline = useMemo(() => {
+    if (headingHere && friendsHereCount > 0) {
+      return `You're heading here and ${friendsHereCount} ${friendsHereCount === 1 ? "friend is" : "friends are"} already nearby`;
+    }
+    if (headingHere) return `You're heading to ${venueName} tonight`;
+    if (friendsHereCount > 0) {
+      return `${friendsHereCount} ${friendsHereCount === 1 ? "friend is" : "friends are"} near this venue`;
+    }
+    return "Add this stop, then invite your group";
+  }, [friendsHereCount, headingHere, venueName]);
 
   const showFeedback = useCallback((message: string) => {
     setFeedback(message);
@@ -79,6 +91,8 @@ export default function VenueMeetupActions({ venueId, venueName, venueSlug, frie
           .eq("venue_id", venueId)
           .maybeSingle();
         if (active) setStopId(stopResult.data?.id ? String(stopResult.data.id) : null);
+      } else {
+        setStopId(null);
       }
 
       if (active) setLoadingIntent(false);
@@ -186,21 +200,24 @@ export default function VenueMeetupActions({ venueId, venueName, venueSlug, frie
   return (
     <section className="rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/8 p-3" aria-label={`${venueName} meetup options`}>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-100/70">Meetup</p>
-          <p className="mt-0.5 text-xs text-white/60">
-            {headingHere
-              ? `You're heading to ${venueName} tonight`
-              : friendsHereCount > 0
-                ? `${friendsHereCount} ${friendsHereCount === 1 ? "friend is" : "friends are"} near this venue`
-                : "Add this stop, then invite your group"}
-          </p>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-100/70">Your crew</p>
+          <p className="mt-0.5 text-xs text-white/65">{socialHeadline}</p>
         </div>
         {headingHere ? (
-          <span className="rounded-full border border-emerald-200/30 bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-100">
+          <span className="shrink-0 rounded-full border border-emerald-200/30 bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-100">
             Heading here
           </span>
         ) : null}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Venue social signals">
+        <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${friendsHereCount > 0 ? "border-fuchsia-200/30 bg-fuchsia-400/15 text-fuchsia-100" : "border-white/10 bg-white/5 text-white/45"}`}>
+          {friendsHereCount > 0 ? `${friendsHereCount} ${friendsHereCount === 1 ? "friend" : "friends"} nearby` : "No friends nearby yet"}
+        </span>
+        <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${headingHere ? "border-emerald-200/30 bg-emerald-400/15 text-emerald-100" : "border-white/10 bg-white/5 text-white/45"}`}>
+          {headingHere ? "Saved to tonight" : "Not in your plan"}
+        </span>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
@@ -224,6 +241,14 @@ export default function VenueMeetupActions({ venueId, venueName, venueSlug, frie
           Invite group
         </button>
       </div>
+
+      {plan ? (
+        <div className="mt-2 flex justify-end">
+          <Link href="/safari" className="text-[11px] font-semibold text-fuchsia-100/70 transition hover:text-fuchsia-50">
+            View tonight's plan →
+          </Link>
+        </div>
+      ) : null}
 
       {feedback ? <p className="mt-2 text-[11px] font-medium text-fuchsia-100/80" role="status">{feedback}</p> : null}
     </section>
