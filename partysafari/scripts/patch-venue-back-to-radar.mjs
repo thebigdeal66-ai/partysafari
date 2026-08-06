@@ -4,8 +4,6 @@ import path from "node:path";
 const filePath = path.resolve("src/app/venues/[slug]/page.tsx");
 let source = fs.readFileSync(filePath, "utf8");
 
-source = source.replace('import Link from "next/link";\n', "");
-
 const control = `<a
             href="/radar"
             target="_self"
