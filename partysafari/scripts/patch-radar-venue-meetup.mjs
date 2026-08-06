@@ -12,14 +12,14 @@ if (!source.includes('VenueMeetupActions from "@/components/radar/VenueMeetupAct
 }
 
 if (!source.includes("<VenueMeetupActions")) {
-  const anchor = '<VenueActivityTimeline\n                        venueId={selectedHotspot.id}';
-  if (!source.includes(anchor)) {
+  const timelinePattern = /<VenueActivityTimeline\s+/;
+  if (!timelinePattern.test(source)) {
     throw new Error("Could not locate venue activity timeline for meetup placement.");
   }
 
   source = source.replace(
-    anchor,
-    '<VenueMeetupActions\n                        venueName={selectedHotspot.name}\n                        venueSlug={selectedHotspot.slug}\n                        friendsHereCount={selectedHotspot.friendsHere}\n                      />\n                      <VenueActivityTimeline\n                        venueId={selectedHotspot.id}'
+    timelinePattern,
+    '<VenueMeetupActions\n                        venueName={selectedHotspot.name}\n                        venueSlug={selectedHotspot.slug}\n                        friendsHereCount={selectedHotspot.friendsHere}\n                      />\n                      <VenueActivityTimeline\n                        '
   );
 }
 
