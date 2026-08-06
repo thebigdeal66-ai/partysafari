@@ -41,6 +41,14 @@ function describeMomentum(momentum: number) {
   return "Energy is holding steady";
 }
 
+function describePartyState(score: number, momentum: number) {
+  if (momentum >= 12 || score >= 82) return "Heating up fast";
+  if (score >= 62) return "Busy right now";
+  if (momentum >= 4 || score >= 38) return "Building momentum";
+  if (momentum <= -8) return "Winding down";
+  return "Tonight is getting started";
+}
+
 export default function VenueActivityTimeline({
   venueId,
   venueName,
@@ -57,7 +65,7 @@ export default function VenueActivityTimeline({
 
   const refresh = useCallback(async () => {
     if (!venueId) return;
-    setLoading(true);
+    setLoading((current) => (items.length === 0 ? true : current));
     const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
 
     const [checkinsResult, storiesResult, litResult] = await Promise.all([
@@ -115,7 +123,7 @@ export default function VenueActivityTimeline({
         id: `lit-${row.id}`,
         kind: "lit",
         icon: "🔥",
-        title: "Venue Lit up",
+        title: "The crowd says it’s Lit",
         detail: "An on-site guest endorsed the energy",
         occurredAt: row.created_at,
       });
@@ -137,7 +145,7 @@ export default function VenueActivityTimeline({
         id: `score-${venueId}-${scoreUpdatedAt}`,
         kind: "score",
         icon: momentum >= 4 ? "📈" : momentum <= -8 ? "📉" : "⚡",
-        title: `Party Score ${Math.round(partyScore)}`,
+        title: describePartyState(partyScore, momentum),
         detail: describeMomentum(momentum),
         occurredAt: scoreUpdatedAt,
       });
@@ -146,7 +154,7 @@ export default function VenueActivityTimeline({
     next.sort((left, right) => asTime(right.occurredAt) - asTime(left.occurredAt));
     setItems(next.slice(0, 24));
     setLoading(false);
-  }, [eventStartTime, eventTitle, momentum, partyScore, scoreUpdatedAt, supabase, venueId, venueName]);
+  }, [eventStartTime, eventTitle, items.length, momentum, partyScore, scoreUpdatedAt, supabase, venueId, venueName]);
 
   useEffect(() => {
     void refresh();
@@ -192,7 +200,7 @@ export default function VenueActivityTimeline({
       </div>
 
       <div className="mt-3 space-y-2">
-        {loading ? <p className="text-xs text-white/50">Loading live activity…</p> : null}
+        {loading && visibleItems.length === 0 ? <p className="text-xs text-white/50">Loading live activity…</p> : null}
         {!loading && visibleItems.length === 0 ? (
           <p className="text-xs leading-relaxed text-white/50">No verified activity in the last six hours yet.</p>
         ) : null}
