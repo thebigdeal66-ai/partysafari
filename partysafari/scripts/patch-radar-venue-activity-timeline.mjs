@@ -19,12 +19,7 @@ if (!source.includes("<VenueActivityTimeline")) {
 
   source = source.replace(
     marker,
-    `                    <>\n                      <VenueActivityTimeline\n                        venueId={selectedHotspot.id}\n                        venueName={selectedHotspot.name}\n                        eventTitle={selectedHotspot.currentEvent}\n                        partyScore={selectedHotspot.partyScore.score}\n                        momentum={selectedHotspot.partyScore.momentum}\n                        scoreUpdatedAt={selectedHotspot.partyScore.updatedAt}\n                      />\n                      <div className="mt-2 grid grid-cols-3 gap-2">`
-  );
-
-  source = source.replace(
-    '                    </div>\n                  }\n                />',
-    '                      </div>\n                    </>\n                  }\n                />'
+    `                    <div className="grid grid-cols-3 gap-2">\n                      <div className="col-span-3">\n                        <VenueActivityTimeline\n                          venueId={selectedHotspot.id}\n                          venueName={selectedHotspot.name}\n                          eventTitle={selectedHotspot.currentEvent}\n                          partyScore={selectedHotspot.partyScore.score}\n                          momentum={selectedHotspot.partyScore.momentum}\n                          scoreUpdatedAt={selectedHotspot.partyScore.updatedAt}\n                        />\n                      </div>`
   );
 }
 
