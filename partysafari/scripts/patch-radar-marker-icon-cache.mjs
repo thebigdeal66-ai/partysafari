@@ -19,7 +19,18 @@ if (!source.includes("const radarHotspotIconCache")) {
 
 const oldHotspotReturn = `  return L.divIcon({\n    className: "",\n    html: \`<button class="\${style.className}\${selected ? " selected" : ""}" style="width:\${radius * 2}px;height:\${radius * 2}px"><span>\${score}</span></button>\`,\n    iconSize: [radius * 2, radius * 2],\n    iconAnchor: [radius, radius],\n  });`;
 
-const newHotspotReturn = `  const cacheKey = \`${hotspot.tier}:\${score}:\${radius}:\${selected ? 1 : 0}\`;\n  const cachedIcon = radarHotspotIconCache.get(cacheKey);\n  if (cachedIcon) return cachedIcon;\n\n  return rememberRadarIcon(radarHotspotIconCache, cacheKey, L.divIcon({\n    className: "",\n    html: \`<button class="\${style.className}\${selected ? " selected" : ""}" style="width:\${radius * 2}px;height:\${radius * 2}px"><span>\${score}</span></button>\`,\n    iconSize: [radius * 2, radius * 2],\n    iconAnchor: [radius, radius],\n  }));`;
+const newHotspotReturn = [
+  "  const cacheKey = `${hotspot.tier}:${score}:${radius}:${selected ? 1 : 0}`;",
+  "  const cachedIcon = radarHotspotIconCache.get(cacheKey);",
+  "  if (cachedIcon) return cachedIcon;",
+  "",
+  "  return rememberRadarIcon(radarHotspotIconCache, cacheKey, L.divIcon({",
+  "    className: \"\",",
+  "    html: `<button class=\"${style.className}${selected ? \" selected\" : \"\"}\" style=\"width:${radius * 2}px;height:${radius * 2}px\"><span>${score}</span></button>`,",
+  "    iconSize: [radius * 2, radius * 2],",
+  "    iconAnchor: [radius, radius],",
+  "  }));",
+].join("\n");
 
 if (!source.includes("radarHotspotIconCache.get(cacheKey)")) {
   if (!source.includes(oldHotspotReturn)) {
@@ -30,7 +41,18 @@ if (!source.includes("radarHotspotIconCache.get(cacheKey)")) {
 
 const oldClusterReturn = `  return L.divIcon({\n    className: "",\n    html: \`<button class="radar-cluster \${style.className}"><span>\${hotspots.length}</span></button>\`,\n    iconSize: [style.radius * 2, style.radius * 2],\n    iconAnchor: [style.radius, style.radius],\n  });`;
 
-const newClusterReturn = `  const cacheKey = \`${tier}:\${hotspots.length}:\${style.radius}\`;\n  const cachedIcon = radarClusterIconCache.get(cacheKey);\n  if (cachedIcon) return cachedIcon;\n\n  return rememberRadarIcon(radarClusterIconCache, cacheKey, L.divIcon({\n    className: "",\n    html: \`<button class="radar-cluster \${style.className}"><span>\${hotspots.length}</span></button>\`,\n    iconSize: [style.radius * 2, style.radius * 2],\n    iconAnchor: [style.radius, style.radius],\n  }));`;
+const newClusterReturn = [
+  "  const cacheKey = `${tier}:${hotspots.length}:${style.radius}`;",
+  "  const cachedIcon = radarClusterIconCache.get(cacheKey);",
+  "  if (cachedIcon) return cachedIcon;",
+  "",
+  "  return rememberRadarIcon(radarClusterIconCache, cacheKey, L.divIcon({",
+  "    className: \"\",",
+  "    html: `<button class=\"radar-cluster ${style.className}\"><span>${hotspots.length}</span></button>`,",
+  "    iconSize: [style.radius * 2, style.radius * 2],",
+  "    iconAnchor: [style.radius, style.radius],",
+  "  }));",
+].join("\n");
 
 if (!source.includes("radarClusterIconCache.get(cacheKey)")) {
   if (!source.includes(oldClusterReturn)) {
