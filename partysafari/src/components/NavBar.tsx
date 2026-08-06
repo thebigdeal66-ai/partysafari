@@ -375,7 +375,7 @@ export default function NavBar() {
             onClick={closeMobileMenu}
             className="rounded-xl px-3 py-2 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-violet-300"
           >
-            Dashboard
+            Discover Tonight
           </Link>
           <Link
             href="/venue-owner"
