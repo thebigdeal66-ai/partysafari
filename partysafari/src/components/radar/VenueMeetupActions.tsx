@@ -1,57 +1,230 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createSupabaseBrowser } from "@/lib/supabaseClient";
 
 type VenueMeetupActionsProps = {
+  venueId: string;
   venueName: string;
   venueSlug: string;
   friendsHereCount: number;
 };
 
-export default function VenueMeetupActions({ venueName, venueSlug, friendsHereCount }: VenueMeetupActionsProps) {
+type TonightPlan = {
+  id: string;
+};
+
+function localDateKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export default function VenueMeetupActions({ venueId, venueName, venueSlug, friendsHereCount }: VenueMeetupActionsProps) {
+  const supabase = useMemo(() => createSupabaseBrowser(), []);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [plan, setPlan] = useState<TonightPlan | null>(null);
+  const [stopId, setStopId] = useState<string | null>(null);
+  const [loadingIntent, setLoadingIntent] = useState(true);
+  const [savingIntent, setSavingIntent] = useState(false);
+  const headingHere = Boolean(stopId);
+
   const venueUrl = useMemo(() => {
     if (typeof window === "undefined") return `/venues/${venueSlug}`;
     return `${window.location.origin}/venues/${venueSlug}`;
   }, [venueSlug]);
 
+  const showFeedback = useCallback((message: string) => {
+    setFeedback(message);
+    window.setTimeout(() => setFeedback(null), 2400);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      setLoadingIntent(true);
+      const userResult = await supabase.auth.getUser();
+      const currentUserId = userResult.data.user?.id || null;
+      if (!active) return;
+      setUserId(currentUserId);
+
+      if (!currentUserId) {
+        setLoadingIntent(false);
+        return;
+      }
+
+      const planResult = await supabase
+        .from("safari_plans")
+        .select("id")
+        .eq("user_id", currentUserId)
+        .eq("safari_date", localDateKey())
+        .in("status", ["active", "draft"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!active) return;
+      const tonightPlan = planResult.data?.id ? { id: String(planResult.data.id) } : null;
+      setPlan(tonightPlan);
+
+      if (tonightPlan) {
+        const stopResult = await supabase
+          .from("safari_stops")
+          .select("id")
+          .eq("safari_plan_id", tonightPlan.id)
+          .eq("venue_id", venueId)
+          .maybeSingle();
+        if (active) setStopId(stopResult.data?.id ? String(stopResult.data.id) : null);
+      }
+
+      if (active) setLoadingIntent(false);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [supabase, venueId]);
+
+  async function ensureTonightPlan() {
+    if (plan) return plan;
+    if (!userId) return null;
+
+    const result = await supabase
+      .from("safari_plans")
+      .insert({
+        user_id: userId,
+        title: "Tonight on PartySafari",
+        safari_date: localDateKey(),
+        status: "active",
+      })
+      .select("id")
+      .single();
+
+    if (result.error || !result.data?.id) {
+      throw new Error(result.error?.message || "Could not create tonight's plan");
+    }
+
+    const nextPlan = { id: String(result.data.id) };
+    setPlan(nextPlan);
+    return nextPlan;
+  }
+
+  async function toggleHeadingHere() {
+    if (!userId) {
+      showFeedback("Sign in to save your meetup plan");
+      return;
+    }
+
+    setSavingIntent(true);
+    try {
+      if (stopId) {
+        const result = await supabase.from("safari_stops").delete().eq("id", stopId);
+        if (result.error) throw result.error;
+        setStopId(null);
+        showFeedback("Removed from tonight's plan");
+        return;
+      }
+
+      const tonightPlan = await ensureTonightPlan();
+      if (!tonightPlan) throw new Error("Could not load tonight's plan");
+
+      const orderResult = await supabase
+        .from("safari_stops")
+        .select("stop_order")
+        .eq("safari_plan_id", tonightPlan.id)
+        .order("stop_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (orderResult.error) throw orderResult.error;
+
+      const nextOrder = Number(orderResult.data?.stop_order || 0) + 1;
+      const insertResult = await supabase
+        .from("safari_stops")
+        .insert({
+          safari_plan_id: tonightPlan.id,
+          venue_id: venueId,
+          stop_order: nextOrder,
+          notes: "Heading here from Safari Radar",
+        })
+        .select("id")
+        .single();
+      if (insertResult.error || !insertResult.data?.id) {
+        throw new Error(insertResult.error?.message || "Could not save meetup intent");
+      }
+
+      setStopId(String(insertResult.data.id));
+      showFeedback("Added to tonight's plan");
+    } catch (error) {
+      showFeedback(error instanceof Error ? error.message : "Could not update meetup plan");
+    } finally {
+      setSavingIntent(false);
+    }
+  }
+
   async function shareMeetup() {
-    const text = `Meet me at ${venueName} tonight on PartySafari.`;
+    const text = headingHere
+      ? `I'm heading to ${venueName} tonight. Meet me there on PartySafari.`
+      : `Meet me at ${venueName} tonight on PartySafari.`;
     try {
       if (navigator.share) {
         await navigator.share({ title: `Meet at ${venueName}`, text, url: venueUrl });
-        setFeedback("Invite sent");
+        showFeedback("Invite sent");
       } else {
         await navigator.clipboard.writeText(`${text} ${venueUrl}`);
-        setFeedback("Meetup link copied");
+        showFeedback("Meetup link copied");
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setFeedback("Could not share yet");
+      showFeedback("Could not share yet");
     }
-
-    window.setTimeout(() => setFeedback(null), 2400);
   }
 
   return (
     <section className="rounded-2xl border border-fuchsia-300/20 bg-fuchsia-400/8 p-3" aria-label={`${venueName} meetup options`}>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-fuchsia-100/70">Meetup</p>
           <p className="mt-0.5 text-xs text-white/60">
-            {friendsHereCount > 0
-              ? `${friendsHereCount} ${friendsHereCount === 1 ? "friend is" : "friends are"} near this venue`
-              : "Invite your group to meet here"}
+            {headingHere
+              ? `You're heading to ${venueName} tonight`
+              : friendsHereCount > 0
+                ? `${friendsHereCount} ${friendsHereCount === 1 ? "friend is" : "friends are"} near this venue`
+                : "Add this stop, then invite your group"}
           </p>
         </div>
+        {headingHere ? (
+          <span className="rounded-full border border-emerald-200/30 bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-100">
+            Heading here
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => void toggleHeadingHere()}
+          disabled={loadingIntent || savingIntent}
+          className={`rounded-full border px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-50 ${
+            headingHere
+              ? "border-emerald-200/35 bg-emerald-400/15 text-emerald-50 hover:bg-emerald-400/25"
+              : "border-fuchsia-200/35 bg-fuchsia-400/15 text-fuchsia-50 hover:bg-fuchsia-400/25"
+          }`}
+        >
+          {loadingIntent ? "Checking plan…" : savingIntent ? "Saving…" : headingHere ? "Change my mind" : "I'm heading here"}
+        </button>
         <button
           type="button"
           onClick={() => void shareMeetup()}
-          className="rounded-full border border-fuchsia-200/35 bg-fuchsia-400/15 px-3 py-1.5 text-xs font-semibold text-fuchsia-50 transition hover:bg-fuchsia-400/25"
+          className="rounded-full border border-white/15 bg-white/8 px-3 py-2 text-xs font-semibold text-white/85 transition hover:bg-white/15"
         >
-          Meet me here
+          Invite group
         </button>
       </div>
+
       {feedback ? <p className="mt-2 text-[11px] font-medium text-fuchsia-100/80" role="status">{feedback}</p> : null}
     </section>
   );
