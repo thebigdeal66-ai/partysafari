@@ -118,8 +118,12 @@ BEGIN
   END IF;
 
   v_market_key := lower(v_city) || '|' || v_state;
-  v_market_slug := trim(both '-' from regexp_replace(lower(v_city), '[^a-z0-9]+', '-', 'g'))
-                   || '-' || lower(v_state);
+  v_market_slug := COALESCE(
+                     NULLIF(trim(both '-' from regexp_replace(lower(v_city), '[^a-z0-9]+', '-', 'g')), ''),
+                     'market'
+                   )
+                   || '-' || lower(v_state)
+                   || '-' || left(md5(v_market_key), 8);
 
   INSERT INTO public.markets (
     market_key,
