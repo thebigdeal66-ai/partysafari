@@ -24,6 +24,8 @@ function EditProfileForm() {
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [location, setLocation] = useState("");
+  const [homeCity, setHomeCity] = useState("");
+  const [homeState, setHomeState] = useState("");
   const [profileType, setProfileType] = useState<"user" | "business" | "entertainer">("user");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,7 +58,7 @@ function EditProfileForm() {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("full_name, username, bio, location, profile_type, avatar_url")
+        .select("full_name, username, bio, location, home_city, home_state, profile_type, avatar_url")
         .eq("id", userId)
         .maybeSingle();
 
@@ -76,6 +78,8 @@ function EditProfileForm() {
           username: "",
           bio: "",
           location: "",
+          home_city: null,
+          home_state: null,
           profile_type: "user",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -91,6 +95,8 @@ function EditProfileForm() {
         setUsername("");
         setBio("");
         setLocation("");
+        setHomeCity("");
+        setHomeState("");
         setProfileType("user");
         setAvatarUrl(null);
 
@@ -103,6 +109,8 @@ function EditProfileForm() {
         setUsername(data.username || "");
         setBio(data.bio || "");
         setLocation(data.location || "");
+        setHomeCity(data.home_city || "");
+        setHomeState(data.home_state || "");
         setProfileType(data.profile_type === "business" || data.profile_type === "entertainer" ? data.profile_type : "user");
         setAvatarUrl(data.avatar_url || null);
       }
@@ -207,6 +215,14 @@ function EditProfileForm() {
     }
 
     const userId = session.user.id;
+    const normalizedCity = homeCity.trim();
+    const normalizedState = homeState.trim().toUpperCase();
+
+    if ((normalizedCity || normalizedState) && (!normalizedCity || !/^[A-Z]{2}$/.test(normalizedState))) {
+      setNotice("Enter both your home city and a two-letter state code, or leave both blank.");
+      setSaving(false);
+      return;
+    }
 
     const { error } = await supabase
       .from("profiles")
@@ -343,9 +359,37 @@ function EditProfileForm() {
                 />
               </div>
 
+              <div className="rounded-3xl border border-violet-400/20 bg-violet-500/10 p-4">
+                <p className="text-sm font-semibold text-violet-100">Your nightlife market</p>
+                <p className="mt-1 text-sm text-white/60">
+                  Your home city helps PartySafari measure demand and decide which town to activate next.
+                </p>
+                <div className="mt-4 grid grid-cols-[1fr_88px] gap-3">
+                  <input
+                    type="text"
+                    value={homeCity}
+                    onChange={(e) => setHomeCity(e.target.value)}
+                    placeholder="West Palm Beach"
+                    autoComplete="address-level2"
+                    aria-label="Home city"
+                    className="min-w-0 rounded-3xl border border-white/10 bg-[#07070B] px-4 py-3 text-white outline-none focus:border-violet-400"
+                  />
+                  <input
+                    type="text"
+                    value={homeState}
+                    onChange={(e) => setHomeState(e.target.value.toUpperCase().slice(0, 2))}
+                    placeholder="FL"
+                    autoComplete="address-level1"
+                    aria-label="State"
+                    maxLength={2}
+                    className="min-w-0 rounded-3xl border border-white/10 bg-[#07070B] px-4 py-3 text-center uppercase text-white outline-none focus:border-violet-400"
+                  />
+                </div>
+              </div>
+
               <div className="grid gap-6 lg:grid-cols-2">
                 <label className="space-y-2 text-sm text-white/70">
-                  Location
+                  Profile Location
                   <input
                     type="text"
                     value={location}
