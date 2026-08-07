@@ -53,8 +53,9 @@ export default function ClaimVenuePage() {
   const [claim, setClaim] = useState<VenueClaim | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [businessEmail, setBusinessEmail] = useState("");
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState<"business_email" | "manual" | null>(null);
+  const [submitting, setSubmitting] = useState<"business_email" | "manual" | "recheck" | "email_change" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadClaimPage = useCallback(async () => {
@@ -146,6 +147,64 @@ export default function ClaimVenuePage() {
     [supabase, userId, venue?.id]
   );
 
+  const recheckBusinessEmail = useCallback(async () => {
+    if (!claim?.id || !userId) {
+      return;
+    }
+
+    setSubmitting("recheck");
+    setNotice(null);
+
+    const { data, error } = await supabase.rpc("verify_pending_venue_claim", {
+      p_claim_id: claim.id,
+    });
+
+    if (error) {
+      setNotice(error.message || "We could not verify this business email yet.");
+      setSubmitting(null);
+      return;
+    }
+
+    const nextClaim = readClaim(data);
+    setClaim(nextClaim);
+
+    if (nextClaim?.status === "verified") {
+      setVenue((current) =>
+        current ? { ...current, verified: true, owner_id: userId } : current
+      );
+      setNotice("Business email verified. Your venue dashboard is ready.");
+    }
+
+    setSubmitting(null);
+  }, [claim?.id, supabase, userId]);
+
+  const requestBusinessEmailChange = useCallback(async () => {
+    const nextEmail = businessEmail.trim().toLowerCase();
+    if (!venue?.slug || !nextEmail || !nextEmail.includes("@")) {
+      setNotice("Enter the business email you use for this venue.");
+      return;
+    }
+
+    setSubmitting("email_change");
+    setNotice(null);
+
+    const { error } = await supabase.auth.updateUser(
+      { email: nextEmail },
+      { emailRedirectTo: `${window.location.origin}/claim/${venue.slug}` }
+    );
+
+    if (error) {
+      setNotice(error.message || "We could not send the business-email confirmation.");
+      setSubmitting(null);
+      return;
+    }
+
+    setNotice(
+      "Verification email sent. Confirm the email change, return here, then tap Re-check Business Email."
+    );
+    setSubmitting(null);
+  }, [businessEmail, supabase, venue?.slug]);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-[#07070B] px-5 py-12 text-white">
@@ -201,9 +260,60 @@ export default function ClaimVenuePage() {
               </Link>
             </div>
           ) : claim?.status === "pending" ? (
-            <div className="mt-6 rounded-2xl border border-amber-300/25 bg-amber-400/10 p-5">
-              <p className="font-semibold text-amber-100">Claim pending</p>
-              <p className="mt-1 text-sm text-amber-50/70">Your request is saved. No in-person meeting is required; it can be reviewed online.</p>
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-amber-300/25 bg-amber-400/10 p-5">
+                <p className="font-semibold text-amber-100">Claim pending</p>
+                <p className="mt-1 text-sm text-amber-50/70">
+                  Your request is saved. No in-person meeting is required.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-violet-400/25 bg-violet-500/10 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-violet-300">
+                  Fastest verification
+                </p>
+                <h2 className="mt-2 text-xl font-semibold">Verify your business email</h2>
+                <p className="mt-2 text-sm text-white/70">
+                  Your PartySafari login is currently {userEmail || "your current account email"}.
+                  Automatic approval requires a confirmed email on the same domain as{" "}
+                  {venue.website_url || "the venue's official website"}.
+                </p>
+
+                <button
+                  type="button"
+                  disabled={Boolean(submitting)}
+                  onClick={() => void recheckBusinessEmail()}
+                  className="mt-4 min-h-11 w-full rounded-full bg-violet-600 px-5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
+                >
+                  {submitting === "recheck" ? "Checking business email…" : "Re-check Business Email"}
+                </button>
+
+                <div className="my-4 h-px bg-white/10" />
+
+                <label className="block text-sm font-semibold text-white/85" htmlFor="business-email">
+                  Need to use a different business email?
+                </label>
+                <input
+                  id="business-email"
+                  type="email"
+                  autoComplete="email"
+                  value={businessEmail}
+                  onChange={(event) => setBusinessEmail(event.target.value)}
+                  placeholder="manager@venue.com"
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-black outline-none focus:border-violet-400"
+                />
+                <button
+                  type="button"
+                  disabled={Boolean(submitting)}
+                  onClick={() => void requestBusinessEmailChange()}
+                  className="mt-3 min-h-11 w-full rounded-full border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  {submitting === "email_change" ? "Sending confirmation…" : "Send Business Email Confirmation"}
+                </button>
+                <p className="mt-3 text-xs leading-5 text-white/55">
+                  This updates the email used to sign in to PartySafari. Supabase will require email confirmation before PartySafari can use it to verify venue ownership.
+                </p>
+              </div>
             </div>
           ) : venue.owner_id ? (
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
