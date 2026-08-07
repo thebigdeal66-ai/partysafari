@@ -129,7 +129,7 @@ export default function BookingsPage() {
         return;
       }
 
-      setOwnedPerformerIds(new Set((ownerResult.data ?? []).map((row) => row.performer_id)));
+      setOwnedPerformerIds(new Set((ownerResult.data ?? []).map((row: { performer_id: string }) => row.performer_id)));
       setBookings((bookingResult.data ?? []) as BookingRow[]);
       setLoading(false);
     };
