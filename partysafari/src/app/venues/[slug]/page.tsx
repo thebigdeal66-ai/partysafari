@@ -427,7 +427,7 @@ export default function VenuePage() {
           <p className="mt-2 text-white/80">
             {(venue.venue_type || "Venue")} • {[venue.city, venue.state].filter(Boolean).join(", ") || "Location TBA"}
           </p>
-          {!venue.verified && !venue.owner_id ? (
+          {!venue.verified ? (
             <Link
               href={`/claim/${venue.slug}`}
               className="mt-3 inline-flex min-h-11 w-fit items-center rounded-full border border-violet-300/40 bg-violet-500/15 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25"
