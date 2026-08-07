@@ -282,24 +282,30 @@ export default function VenuePage() {
       setLoading(true);
       setErrorMessage(null);
 
-      const { data, error } = await supabase
-        .from("venues")
-        .select("*")
-        .eq("slug", slug)
-        .maybeSingle();
+      let venueData: VenueRow;
+
+      try {
+        const response = await fetch(`/api/public/venues/${encodeURIComponent(slug)}`, {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Venue lookup failed.");
+        }
+
+        venueData = (await response.json()) as VenueRow;
+      } catch {
+        if (!cancelled) {
+          setErrorMessage("Venue not found.");
+          setVenue(null);
+          setLoading(false);
+        }
+        return;
+      }
 
       if (cancelled) {
         return;
       }
-
-      if (error || !data) {
-        setErrorMessage("Venue not found.");
-        setVenue(null);
-        setLoading(false);
-        return;
-      }
-
-      const venueData = data as VenueRow;
       setVenue(venueData);
       setLoading(false);
 
