@@ -554,14 +554,15 @@ export default function SafariRadarExperience() {
     traceSetState("venuesError", 495, null);
     setVenuesError(null);
 
-    const { data, error } = await supabase
-      .from("venues")
-      .select("id, slug, name, city, state, venue_type, latitude, longitude, image_url, photo_url, current_status, music_genres, drink_specials, food_available")
-      .not("latitude", "is", null)
-      .not("longitude", "is", null)
-      .limit(260);
+    let data: Array<Record<string, unknown>>;
 
-    if (error) {
+    try {
+      const response = await fetch("/api/public/venues", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Venue lookup failed.");
+      }
+      data = (await response.json()) as Array<Record<string, unknown>>;
+    } catch (error) {
       if (process.env.NODE_ENV === "development") {
         console.error("[SafariRadar] load venues failed", error);
       }
@@ -574,7 +575,7 @@ export default function SafariRadarExperience() {
       return;
     }
 
-    const mapped = ((data || []) as Array<Record<string, unknown>>)
+    const mapped = data
       .map((row) => {
         const id = parseText(row.id);
         const latitude = parseNumber(row.latitude);
@@ -606,25 +607,22 @@ export default function SafariRadarExperience() {
     traceSetState("loading", 549, false);
     setLoading(false);
     radarTrace("SafariRadarExperience", "callback:loadVenues:complete", { line: 550, mappedCount: mapped.length });
-  }, [supabase]);
+  }, []);
 
   const loadEvents = useCallback(async () => {
     radarTrace("SafariRadarExperience", "callback:loadEvents:start", { line: 554 });
     traceSetState("loadingEvents", 555, true);
     setLoadingEvents(true);
 
-    const dayAheadIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    let data: Array<Record<string, unknown>>;
 
-    const { data, error } = await supabase
-      .from("events")
-      .select("id, venue_id, title, performer_name, event_type, start_time, end_time, status")
-      .gte("start_time", twoHoursAgo)
-      .lte("start_time", dayAheadIso)
-      .order("start_time", { ascending: true })
-      .limit(300);
-
-    if (error) {
+    try {
+      const response = await fetch("/api/public/events", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Event lookup failed.");
+      }
+      data = (await response.json()) as Array<Record<string, unknown>>;
+    } catch (error) {
       if (process.env.NODE_ENV === "development") {
         console.warn("[SafariRadar] load events failed", error);
       }
@@ -635,7 +633,7 @@ export default function SafariRadarExperience() {
       return;
     }
 
-    const mapped = ((data || []) as Array<Record<string, unknown>>)
+    const mapped = data
       .map((row) => {
         const id = parseText(row.id);
         const venueId = parseText(row.venue_id);
@@ -662,7 +660,7 @@ export default function SafariRadarExperience() {
     traceSetState("loadingEvents", 606, false);
     setLoadingEvents(false);
     radarTrace("SafariRadarExperience", "callback:loadEvents:complete", { line: 607, mappedCount: mapped.length });
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     logEffectRun("initial-load-and-event-subscription", 611, ["loadEvents", "loadVenues", "supabase"]);
