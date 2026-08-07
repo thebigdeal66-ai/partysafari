@@ -1127,6 +1127,7 @@ export default function SafariRadarExperience() {
       <section className="relative z-10 mx-auto w-full max-w-7xl px-2 md:px-4">
         <div className="relative h-[70vh] overflow-hidden rounded-3xl border border-white/15 bg-black/50 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
           <MapContainer
+            key={`radar-map:${mapCenter.lat.toFixed(5)}:${mapCenter.lng.toFixed(5)}`}
             center={mapCenterPosition}
             zoom={13}
             minZoom={10}
