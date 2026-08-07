@@ -209,9 +209,14 @@ export default function ClaimVenuePage() {
             <div className="mt-6 rounded-2xl border border-violet-400/25 bg-violet-500/10 p-5">
               <p className="font-semibold text-violet-100">Sign in to claim this venue</p>
               <p className="mt-1 text-sm text-white/70">Use your business email when possible for the fastest verification.</p>
-              <Link href={loginTarget} className="mt-4 inline-flex min-h-11 items-center rounded-full bg-violet-600 px-5 text-sm font-semibold text-white">
-                Sign In to Continue
-              </Link>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <Link href={loginTarget} className="inline-flex min-h-11 items-center justify-center rounded-full bg-violet-600 px-5 text-sm font-semibold text-white">
+                  Sign In to Continue
+                </Link>
+                <Link href={`/signup?next=${encodeURIComponent(`/claim/${venue.slug}`)}`} className="inline-flex min-h-11 items-center justify-center rounded-full border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white">
+                  Create Account
+                </Link>
+              </div>
             </div>
           ) : venue.owner_id ? (
             <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
