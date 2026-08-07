@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import FollowButton from "@/components/FollowButton";
 import FriendButton from "@/components/social/FriendButton";
+import ProfileSafetyActions from "@/components/social/ProfileSafetyActions";
 import StoryComposer from "@/components/stories/StoryComposer";
 import StoryGrid from "@/components/stories/StoryGrid";
 import StoryViewer from "@/components/stories/StoryViewer";
@@ -297,6 +298,7 @@ export default function ProfilePage() {
             <button className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">
               Message
             </button>
+            <ProfileSafetyActions targetUserId={profile.id} />
           </div>
         </div>
       </section>
@@ -384,6 +386,7 @@ export default function ProfilePage() {
             <button className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">
               Message
             </button>
+            <ProfileSafetyActions targetUserId={profile.id} />
             <button className="rounded-full border border-white/20 bg-white/10 px-6 py-2 text-sm font-semibold text-white transition hover:bg-white/20">
               Book Event
             </button>
@@ -488,6 +491,7 @@ export default function ProfilePage() {
             <button className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">
               Message
             </button>
+            <ProfileSafetyActions targetUserId={profile.id} />
             <button className="rounded-full border border-white/20 bg-white/10 px-6 py-2 text-sm font-semibold text-white transition hover:bg-white/20">
               Book
             </button>
