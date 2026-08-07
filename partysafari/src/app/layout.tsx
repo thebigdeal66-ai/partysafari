@@ -4,6 +4,7 @@ import "./globals.css";
 import NavBar from "../components/NavBar";
 import GlobalRuntimeKillSwitch from "../components/GlobalRuntimeKillSwitch";
 import GlobalUserLocationTracker from "../components/GlobalUserLocationTracker";
+import LegalFooter from "../components/legal/LegalFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -68,6 +69,7 @@ export default function RootLayout({
         <GlobalUserLocationTracker />
         <NavBar />
         {children}
+        <LegalFooter />
       </body>
     </html>
   );
