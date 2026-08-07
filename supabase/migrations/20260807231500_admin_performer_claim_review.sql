@@ -17,9 +17,13 @@ for select
 to authenticated
 using (profile_id = (select auth.uid()));
 
--- Initial PartySafari founder reviewer. Additional admins require an explicit database change.
+-- Initial PartySafari founder reviewer. Resolve the verified login at migration time
+-- instead of hardcoding a generated auth/profile UUID.
 insert into public.app_admins (profile_id, role)
-values ('02ed8330-6ca7-4cf0-ab16-52f1b4feaa8f', 'founder')
+select p.id, 'founder'
+from public.profiles p
+join auth.users u on u.id = p.id
+where lower(u.email) = lower('thebigdeal66@gmail.com')
 on conflict (profile_id) do update set role = excluded.role;
 
 drop policy if exists performer_claims_admin_select on public.performer_claims;
