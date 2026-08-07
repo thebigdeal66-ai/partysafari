@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createSupabaseBrowser } from "@/lib/supabaseClient";\nimport { resolveSafeNextPath } from "@/lib/authRedirect";
+import { createSupabaseBrowser } from "@/lib/supabaseClient";
+import { resolveSafeNextPath } from "@/lib/authRedirect";
 
 export default function SignupPage() {
   const router = useRouter();
