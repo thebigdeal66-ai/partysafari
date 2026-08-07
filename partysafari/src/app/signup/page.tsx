@@ -24,9 +24,13 @@ export default function SignupPage() {
     }
 
     setLoading(true);
+    const nextPath = resolveSafeNextPath(window.location.search);
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password: password.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}${nextPath}`,
+      },
     });
     setLoading(false);
 
@@ -36,7 +40,7 @@ export default function SignupPage() {
     }
 
     if (data.session) {
-      router.push("/dashboard");
+      router.push(nextPath);
       return;
     }
 
