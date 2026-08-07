@@ -430,7 +430,7 @@ export default function SafariRadarExperience() {
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [mapZoom, setMapZoom] = useState(13);
 
-  const [minScore, setMinScore] = useState(25);
+  const [minScore, setMinScore] = useState(0);
   const [maxDistanceMiles, setMaxDistanceMiles] = useState(20);
   const [friendsOnly, setFriendsOnly] = useState(false);
   const [openNowOnly, setOpenNowOnly] = useState(false);
@@ -748,10 +748,25 @@ export default function SafariRadarExperience() {
     );
 
     if (localMatch) {
+      const localVenues = venues.filter(
+        (venue) => cityLabel(venue).toLowerCase() === localMatch.toLowerCase()
+      );
+      const center = localVenues.length > 0
+        ? {
+            lat: localVenues.reduce((sum, venue) => sum + venue.latitude, 0) / localVenues.length,
+            lng: localVenues.reduce((sum, venue) => sum + venue.longitude, 0) / localVenues.length,
+          }
+        : null;
+
       setSelectedCity(localMatch);
       setCityQuery(localMatch);
-      setSearchedCityCenter(null);
+      setSearchedCityCenter(center);
       setSelectedHotspotId(null);
+
+      if (center) {
+        setMapCenter(center);
+        setFocusTarget({ ...center, zoom: 13 });
+      }
       return;
     }
 
@@ -783,7 +798,7 @@ export default function SafariRadarExperience() {
     } finally {
       setCitySearching(false);
     }
-  }, [cityOptions, cityQuery]);
+  }, [cityOptions, cityQuery, venues]);
 
   useEffect(() => {
     logEffectRun("sync-map-center", 669, ["cityCenter", "userLocation"]);
