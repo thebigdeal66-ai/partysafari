@@ -20,7 +20,7 @@ source = source.replace(
 
 const filterEnd = `      return true;
     });
-  }, [crowdFilter, friendsOnly, hotspots, liveMusicOnly, liveStoriesOnly, maxDistanceMiles, minScore, openNowOnly, overlays, venueTypeFilter]);`;
+  }, [crowdFilter, friendsOnly, hotspots, liveMusicOnly, liveStoriesOnly, maxDistanceMiles, minScore, openNowOnly, overlays, selectedCity, venueTypeFilter]);`;
 
 const lockedFilterEnd = `      return true;
     });
@@ -34,7 +34,7 @@ const lockedFilterEnd = `      return true;
 
     const pinnedRecommendation = hotspots.find((hotspot) => hotspot.id === selectedHotspotId);
     return pinnedRecommendation ? [pinnedRecommendation, ...matchingHotspots] : matchingHotspots;
-  }, [crowdFilter, friendsOnly, hotspots, liveMusicOnly, liveStoriesOnly, maxDistanceMiles, minScore, openNowOnly, overlays, recommendationReason?.venueId, selectedHotspotId, venueTypeFilter]);`;
+  }, [crowdFilter, friendsOnly, hotspots, liveMusicOnly, liveStoriesOnly, maxDistanceMiles, minScore, openNowOnly, overlays, recommendationReason?.venueId, selectedCity, selectedHotspotId, venueTypeFilter]);`;
 
 if (!source.includes(filterEnd)) {
   throw new Error("Could not locate Radar hotspot filter end.");
