@@ -428,12 +428,12 @@ export default function VenuePage() {
             {(venue.venue_type || "Venue")} • {[venue.city, venue.state].filter(Boolean).join(", ") || "Location TBA"}
           </p>
           {!venue.verified ? (
-            <Link
+            <a
               href={`/claim/${venue.slug}`}
-              className="mt-3 inline-flex min-h-11 w-fit items-center rounded-full border border-violet-300/40 bg-violet-500/15 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25"
+              className="relative z-20 mt-3 inline-flex min-h-11 w-fit pointer-events-auto items-center rounded-full border border-violet-300/40 bg-violet-500/15 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25"
             >
               Own this venue? Claim it
-            </Link>
+            </a>
           ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="rounded-full bg-violet-500/25 px-3 py-1 text-sm text-violet-100">Status: {venue.current_status || "Open"}</span>
