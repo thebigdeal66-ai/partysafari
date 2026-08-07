@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";\nimport { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { getCrowdLevel, getCrowdLevelColorClass, getCrowdLevelEmoji, getCrowdLevelDescription, formatCheckInCount } from "@/lib/venueCheckInUtils";
@@ -750,10 +750,16 @@ function VenueOwnerDashboard() {
       <main className="min-h-screen bg-[#07070B] px-6 py-6 text-white">
         <div className="mx-auto max-w-4xl rounded-3xl border border-white/10 bg-[#10061f] p-6">
           <h1 className="text-3xl font-bold">Venue Owner Dashboard</h1>
-          <p className="mt-3 text-white/70">No venue is connected to this account.</p>
+          <p className="mt-3 text-white/70">No venue is connected to this account yet.</p>
           <p className="mt-2 text-sm text-white/50">
-            If you manage a venue and expect to see it here, contact support to have it linked to your account.
+            If your venue is already listed on PartySafari, you can claim it online and verify ownership without an in-person meeting.
           </p>
+          <Link
+            href="/radar"
+            className="mt-5 inline-flex min-h-11 items-center rounded-full bg-violet-600 px-5 text-sm font-semibold text-white transition hover:bg-violet-500"
+          >
+            Find & Claim Your Venue
+          </Link>
         </div>
       </main>
     );
