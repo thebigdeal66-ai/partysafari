@@ -38,6 +38,7 @@ type PerformerRow = {
   bio: string | null;
   genres: string[] | null;
   instagram: string | null;
+  photo_url: string | null;
   event_performers: AppearanceJoin[] | null;
 };
 
@@ -81,6 +82,7 @@ export default function TalentProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -102,6 +104,7 @@ export default function TalentProfilePage() {
           bio,
           genres,
           instagram,
+          photo_url,
           event_performers (
             billing_order,
             events:event_id (
@@ -144,6 +147,24 @@ export default function TalentProfilePage() {
       }
 
       const row = data as PerformerRow;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      let ownsProfile = false;
+      if (user) {
+        const { data: ownership } = await supabase
+          .from("performer_owners")
+          .select("performer_id")
+          .eq("performer_id", row.id)
+          .eq("profile_id", user.id)
+          .maybeSingle();
+        ownsProfile = Boolean(ownership);
+      }
+
+      if (!mounted) return;
+      setIsOwner(ownsProfile);
+
       const now = Date.now();
       const upcoming = (row.event_performers ?? [])
         .map((link) => firstOf(link.events))
@@ -210,6 +231,7 @@ export default function TalentProfilePage() {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+  const photoUrl = safeExternalUrl(performer.photo_url);
   const instagramUrl = performer.instagram
     ? safeExternalUrl(
         performer.instagram.includes("instagram.com")
@@ -226,8 +248,13 @@ export default function TalentProfilePage() {
             ← All Talent
           </Link>
           <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-600 to-orange-500 text-3xl font-black shadow-[0_0_45px_rgba(124,58,237,0.2)]">
-              {initials || "PS"}
+            <div
+              role={photoUrl ? "img" : undefined}
+              aria-label={photoUrl ? `${performer.stage_name} profile photo` : undefined}
+              className="flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-600 to-orange-500 bg-cover bg-center text-3xl font-black shadow-[0_0_45px_rgba(124,58,237,0.2)]"
+              style={photoUrl ? { backgroundImage: `url(${JSON.stringify(photoUrl)})` } : undefined}
+            >
+              {photoUrl ? null : initials || "PS"}
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-300">
@@ -275,19 +302,43 @@ export default function TalentProfilePage() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-violet-300/15 bg-violet-500/[0.07] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-200/80">For artists & representatives</p>
-            <h2 className="mt-2 text-lg font-bold">Is this you?</h2>
-            <p className="mt-2 text-sm leading-6 text-white/60">
-              Claim this Talent profile to manage its details and receive PartySafari booking inquiries after verification.
-            </p>
-            <Link
-              href={`/talent/${performer.slug}/claim`}
-              className="mt-4 inline-flex min-h-11 items-center rounded-full border border-violet-300/30 bg-violet-500/10 px-4 text-sm font-bold text-violet-100"
-            >
-              Claim this profile
-            </Link>
-          </div>
+          {isOwner ? (
+            <div className="rounded-3xl border border-emerald-300/20 bg-emerald-500/[0.07] p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/80">Your Talent profile</p>
+              <h2 className="mt-2 text-lg font-bold">You manage this page</h2>
+              <p className="mt-2 text-sm leading-6 text-white/60">
+                Update your artist details here. Booking inquiries remain in your private PartySafari inbox.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href={`/talent/${performer.slug}/edit`}
+                  className="inline-flex min-h-11 items-center rounded-full bg-emerald-500 px-4 text-sm font-bold text-black"
+                >
+                  Manage profile
+                </Link>
+                <Link
+                  href="/bookings"
+                  className="inline-flex min-h-11 items-center rounded-full border border-white/15 px-4 text-sm font-semibold text-white/80"
+                >
+                  Booking inbox
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-violet-300/15 bg-violet-500/[0.07] p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-200/80">For artists & representatives</p>
+              <h2 className="mt-2 text-lg font-bold">Is this you?</h2>
+              <p className="mt-2 text-sm leading-6 text-white/60">
+                Claim this Talent profile to manage its details and receive PartySafari booking inquiries after verification.
+              </p>
+              <Link
+                href={`/talent/${performer.slug}/claim`}
+                className="mt-4 inline-flex min-h-11 items-center rounded-full border border-violet-300/30 bg-violet-500/10 px-4 text-sm font-bold text-violet-100"
+              >
+                Claim this profile
+              </Link>
+            </div>
+          )}
 
           <div className="rounded-3xl border border-orange-300/15 bg-orange-500/[0.07] p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-200/80">PartySafari lineup data</p>
