@@ -6,6 +6,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const target = resolve(here, "../src/components/radar/SafariRadarExperience.tsx");
 let source = await readFile(target, "utf8");
 
+if (source.includes("const submitCitySearch = useCallback")) {
+  console.log("Safari Radar typed city search is already present; legacy city selector patch skipped.");
+  process.exit(0);
+}
+
 const callbackAnchor = `  const expandSearchRadius = useCallback(() => {\n    setMaxDistanceMiles((current) => Math.min(50, current + 10));\n    setMinScore((current) => Math.max(0, current - 8));\n  }, []);`;
 
 const callbackBlock = `${callbackAnchor}\n\n  const goToSelectedCity = useCallback(() => {\n    const destination = selectedCity === "nearby" ? userLocation : cityCenter;\n    if (!destination) {\n      setGeoError(selectedCity === "nearby"\n        ? "Choose Locate Me first so Radar can return to your area."\n        : "That city does not have a mapped venue center yet.");\n      return;\n    }\n\n    setSelectedHotspotId(null);\n    setViewMode("map");\n    setMapCenter(destination);\n    setFocusTarget({ lat: destination.lat, lng: destination.lng, zoom: selectedCity === "nearby" ? 14 : 13 });\n    setGeoError(null);\n  }, [cityCenter, selectedCity, userLocation]);`;
