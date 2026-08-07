@@ -275,6 +275,20 @@ export default function TalentProfilePage() {
             </div>
           </div>
 
+          <div className="rounded-3xl border border-violet-300/15 bg-violet-500/[0.07] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-200/80">For artists & representatives</p>
+            <h2 className="mt-2 text-lg font-bold">Is this you?</h2>
+            <p className="mt-2 text-sm leading-6 text-white/60">
+              Claim this Talent profile to manage its details and receive PartySafari booking inquiries after verification.
+            </p>
+            <Link
+              href={`/talent/${performer.slug}/claim`}
+              className="mt-4 inline-flex min-h-11 items-center rounded-full border border-violet-300/30 bg-violet-500/10 px-4 text-sm font-bold text-violet-100"
+            >
+              Claim this profile
+            </Link>
+          </div>
+
           <div className="rounded-3xl border border-orange-300/15 bg-orange-500/[0.07] p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-200/80">PartySafari lineup data</p>
             <p className="mt-2 text-3xl font-semibold">{appearances.length}</p>
