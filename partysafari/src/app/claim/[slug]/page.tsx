@@ -205,6 +205,10 @@ export default function ClaimVenuePage() {
               <p className="font-semibold text-amber-100">Claim pending</p>
               <p className="mt-1 text-sm text-amber-50/70">Your request is saved. No in-person meeting is required; it can be reviewed online.</p>
             </div>
+          ) : venue.owner_id ? (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+              This venue is already connected to a PartySafari account. Contact PartySafari if the business has changed ownership.
+            </div>
           ) : !userId ? (
             <div className="mt-6 rounded-2xl border border-violet-400/25 bg-violet-500/10 p-5">
               <p className="font-semibold text-violet-100">Sign in to claim this venue</p>
@@ -217,10 +221,6 @@ export default function ClaimVenuePage() {
                   Create Account
                 </Link>
               </div>
-            </div>
-          ) : venue.owner_id ? (
-            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
-              This venue has already been claimed. Contact PartySafari if the business has changed ownership.
             </div>
           ) : (
             <div className="mt-6 space-y-4">
