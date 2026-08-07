@@ -241,6 +241,12 @@ export default function NavBar() {
               Profiles
             </Link>
             <Link
+              href="/talent"
+              className="text-white/80 hover:text-violet-300 transition-colors"
+            >
+              Talent
+            </Link>
+            <Link
               href="/requests"
               className="text-white/80 hover:text-violet-300 transition-colors"
             >
@@ -338,6 +344,13 @@ export default function NavBar() {
             className="rounded-xl px-3 py-2 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-violet-300"
           >
             Profiles
+          </Link>
+          <Link
+            href="/talent"
+            onClick={closeMobileMenu}
+            className="rounded-xl px-3 py-2 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-violet-300"
+          >
+            Talent
           </Link>
           <Link
             href="/requests"
