@@ -923,10 +923,13 @@ export default function SafariRadarExperience() {
       crowdFilter,
     });
     return hotspots.filter((hotspot) => {
+      if (selectedCity !== "nearby" && cityLabel(hotspot).toLowerCase() !== selectedCity.toLowerCase()) {
+        return false;
+      }
       if (hotspot.crowdPulse.pulseScore < minScore) {
         return false;
       }
-      if (hotspot.distanceMiles !== null && hotspot.distanceMiles > maxDistanceMiles) {
+      if (selectedCity === "nearby" && hotspot.distanceMiles !== null && hotspot.distanceMiles > maxDistanceMiles) {
         return false;
       }
       if (friendsOnly && hotspot.friendsHere <= 0) {
@@ -969,7 +972,7 @@ export default function SafariRadarExperience() {
 
       return true;
     });
-  }, [crowdFilter, friendsOnly, hotspots, liveMusicOnly, liveStoriesOnly, maxDistanceMiles, minScore, openNowOnly, overlays, venueTypeFilter]);
+  }, [crowdFilter, friendsOnly, hotspots, liveMusicOnly, liveStoriesOnly, maxDistanceMiles, minScore, openNowOnly, overlays, selectedCity, venueTypeFilter]);
 
   const clusteredHotspots = useMemo(() => {
     radarTrace("SafariRadarExperience", "memo:clusteredHotspots", {
