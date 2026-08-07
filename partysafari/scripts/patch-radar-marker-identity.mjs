@@ -23,16 +23,6 @@ function venueCategoryIcon(venueType: string | null) {
   return "📍";
 }
 
-function baselineVenuePulse(hotspot: Pick<RadarHotspot, "id" | "openNow" | "currentEvents" | "drinkSpecials" | "foodAvailable">) {
-  let score = hotspot.openNow ? 11 : 5;
-  score += Math.min(8, hotspot.currentEvents * 4);
-  if (hotspot.drinkSpecials) score += 3;
-  if (hotspot.foodAvailable) score += 2;
-  let hash = 0;
-  for (const character of hotspot.id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  return Math.min(24, score + (hash % 5));
-}
-
 function createUserLocationIcon() {
   return L.divIcon({
     className: "",
@@ -48,17 +38,13 @@ if (!source.includes("function venueCategoryIcon")) {
 }
 
 source = source.replace(
-  '  const score = Math.max(0, Math.min(100, Math.round(hotspot.crowdPulse.pulseScore)));',
-  '  const score = Math.max(0, Math.min(100, Math.round(Math.max(hotspot.crowdPulse.pulseScore, baselineVenuePulse(hotspot)))));',
-);
-source = source.replace(
   '    html: `<button class="${style.className}${selected ? " selected" : ""}" style="width:${radius * 2}px;height:${radius * 2}px"><span>${score}</span></button>`,',
-  '    html: `<button class="${style.className}${selected ? " selected" : ""}" style="width:${radius * 2}px;height:${radius * 2}px"><span class="radar-hotspot-icon">${venueCategoryIcon(hotspot.venueType)}</span><span class="radar-hotspot-score">${score}</span></button>`,',
+  '    html: `<button class="${style.className}${selected ? " selected" : ""}" style="width:${radius * 2}px;height:${radius * 2}px" aria-label="${hotspot.name}"><span class="radar-hotspot-icon" aria-hidden="true">${venueCategoryIcon(hotspot.venueType)}</span></button>`,',
 );
 
 source = source.replace(
   '    html: `<button class="radar-cluster ${style.className}"><span>${hotspots.length}</span></button>`,',
-  '    html: `<button class="radar-cluster ${style.className}"><span>${hotspots.length}</span><small>places</small></button>`,',
+  '    html: `<button class="radar-cluster ${style.className}" aria-label="${hotspots.length} venues"><span>${hotspots.length}</span><small>places</small></button>`,',
 );
 
 if (!source.includes('icon={createUserLocationIcon()}')) {
@@ -71,7 +57,7 @@ if (!source.includes('icon={createUserLocationIcon()}')) {
 if (!source.includes("hotspot.name}</strong>")) {
   source = source.replace(
     `                  )}\n                </Marker>`,
-    `                  )}\n                  <Tooltip direction="top" offset={[0, -18]} opacity={0.97}>\n                    <div className="min-w-[150px] text-xs">\n                      <strong className="block text-sm">{hotspot.name}</strong>\n                      <span className="opacity-75">{hotspot.venueType || "Venue"} · {formatMiles(hotspot.distanceMiles)}</span>\n                      <span className="mt-1 block font-semibold">{hotspot.tier} · Pulse {Math.round(Math.max(hotspot.crowdPulse.pulseScore, baselineVenuePulse(hotspot)))}</span>\n                    </div>\n                  </Tooltip>\n                </Marker>`,
+    `                  )}\n                  <Tooltip direction="top" offset={[0, -18]} opacity={0.97}>\n                    <div className="min-w-[150px] text-xs">\n                      <strong className="block text-sm">{hotspot.name}</strong>\n                      <span className="opacity-75">{hotspot.venueType || "Venue"} · {formatMiles(hotspot.distanceMiles)}</span>\n                      <span className="mt-1 block font-semibold">{hotspot.tier} · Pulse {Math.round(hotspot.crowdPulse.pulseScore)}</span>\n                    </div>\n                  </Tooltip>\n                </Marker>`,
   );
 }
 
@@ -82,13 +68,7 @@ const styles = `
         }
 
         .radar-hotspot-icon {
-          font-size: 13px !important;
-          line-height: 1 !important;
-        }
-
-        .radar-hotspot-score {
-          margin-top: 1px;
-          font-size: 10px !important;
+          font-size: 16px !important;
           line-height: 1 !important;
         }
 
