@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
+import { resolveSafeNextPath } from "@/lib/authRedirect";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -23,9 +24,13 @@ export default function SignupPage() {
     }
 
     setLoading(true);
+    const nextPath = resolveSafeNextPath(window.location.search);
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password: password.trim(),
+      options: {
+        emailRedirectTo: `${window.location.origin}${nextPath}`,
+      },
     });
     setLoading(false);
 
@@ -35,7 +40,7 @@ export default function SignupPage() {
     }
 
     if (data.session) {
-      router.push("/dashboard");
+      router.push(nextPath);
       return;
     }
 
