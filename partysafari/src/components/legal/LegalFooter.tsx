@@ -7,6 +7,7 @@ export default function LegalFooter() {
         <span>© 2026 PartySafari.live</span>
         <Link href="/terms" className="hover:text-white">Terms</Link>
         <Link href="/privacy" className="hover:text-white">Privacy</Link>
+        <Link href="/safety" className="hover:text-white">Safety</Link>
         <Link href="/privacy/request" className="hover:text-white">Privacy request</Link>
       </div>
     </footer>
