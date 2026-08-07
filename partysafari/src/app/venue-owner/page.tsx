@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";\nimport { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { getCrowdLevel, getCrowdLevelColorClass, getCrowdLevelEmoji, getCrowdLevelDescription, formatCheckInCount } from "@/lib/venueCheckInUtils";
