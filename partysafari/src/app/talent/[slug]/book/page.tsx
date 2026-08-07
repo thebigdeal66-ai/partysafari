@@ -30,6 +30,7 @@ export default function PerformerBookingPage() {
   const [contactPhone, setContactPhone] = useState("");
   const [contactOk, setContactOk] = useState(false);
   const [status, setStatus] = useState<SubmitState>("idle");
+  const [savedBookingId, setSavedBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -86,21 +87,25 @@ export default function PerformerBookingPage() {
       return;
     }
 
-    const { error } = await supabase.from("booking_requests").insert({
-      performer_id: performer.id,
-      requester_id: user.id,
-      event_date: eventDate,
-      event_type: eventType.trim().slice(0, 120),
-      location: location.trim().slice(0, 180),
-      budget_range: budgetRange.trim() ? budgetRange.trim().slice(0, 80) : null,
-      message: message.trim().slice(0, 1500),
-      contact_email: contactEmail.trim() ? contactEmail.trim().slice(0, 254) : user.email ?? null,
-      contact_phone: contactPhone.trim() ? contactPhone.trim().slice(0, 40) : null,
-      contact_ok: contactOk,
-      status: "pending",
-    });
+    const { data: bookingData, error } = await supabase
+      .from("booking_requests")
+      .insert({
+        performer_id: performer.id,
+        requester_id: user.id,
+        event_date: eventDate,
+        event_type: eventType.trim().slice(0, 120),
+        location: location.trim().slice(0, 180),
+        budget_range: budgetRange.trim() ? budgetRange.trim().slice(0, 80) : null,
+        message: message.trim().slice(0, 1500),
+        contact_email: contactOk && contactEmail.trim() ? contactEmail.trim().slice(0, 254) : null,
+        contact_phone: contactOk && contactPhone.trim() ? contactPhone.trim().slice(0, 40) : null,
+        contact_ok: contactOk,
+        status: "pending",
+      })
+      .select("id")
+      .single();
 
-    if (error) {
+    if (error || !bookingData) {
       if (process.env.NODE_ENV === "development") {
         console.error("[performer-booking] Insert failed:", error);
       }
@@ -108,6 +113,7 @@ export default function PerformerBookingPage() {
       return;
     }
 
+    setSavedBookingId(bookingData.id);
     setStatus("sent");
   }
 
@@ -152,12 +158,22 @@ export default function PerformerBookingPage() {
               <p className="mt-2 text-sm leading-6 text-white/70">
                 Your request for {performer.stage_name} is saved in PartySafari.
               </p>
-              <Link
-                href={`/talent/${performer.slug}`}
-                className="mt-5 inline-flex min-h-11 items-center rounded-full bg-violet-600 px-5 text-sm font-bold"
-              >
-                Back to performer
-              </Link>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {savedBookingId ? (
+                  <Link
+                    href={`/bookings/${savedBookingId}`}
+                    className="inline-flex min-h-11 items-center rounded-full bg-gradient-to-r from-violet-600 to-orange-500 px-5 text-sm font-bold"
+                  >
+                    Open booking thread
+                  </Link>
+                ) : null}
+                <Link
+                  href="/bookings"
+                  className="inline-flex min-h-11 items-center rounded-full border border-violet-300/30 bg-violet-500/10 px-5 text-sm font-bold text-violet-100"
+                >
+                  Booking hub
+                </Link>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
