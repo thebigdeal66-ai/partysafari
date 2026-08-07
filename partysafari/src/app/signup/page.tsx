@@ -12,6 +12,8 @@ export default function SignupPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [homeCity, setHomeCity] = useState("");
+  const [homeState, setHomeState] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,6 +25,13 @@ export default function SignupPage() {
       return;
     }
 
+    const normalizedCity = homeCity.trim();
+    const normalizedState = homeState.trim().toUpperCase();
+    if ((normalizedCity || normalizedState) && (!normalizedCity || !/^[A-Z]{2}$/.test(normalizedState))) {
+      setNotice("Enter both your city and a two-letter state code, or leave both blank.");
+      return;
+    }
+
     setLoading(true);
     const nextPath = resolveSafeNextPath(window.location.search);
     const { data, error } = await supabase.auth.signUp({
@@ -30,6 +39,10 @@ export default function SignupPage() {
       password: password.trim(),
       options: {
         emailRedirectTo: `${window.location.origin}${nextPath}`,
+        data: {
+          home_city: normalizedCity,
+          home_state: normalizedState,
+        },
       },
     });
     setLoading(false);
@@ -77,6 +90,33 @@ export default function SignupPage() {
             placeholder="Choose a secure password"
             className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-black outline-none focus:border-violet-400"
           />
+
+          <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4">
+            <p className="text-sm font-semibold text-violet-100">Where do you usually go out?</p>
+            <p className="mt-1 text-xs text-white/60">
+              Optional. This helps PartySafari decide which city to activate next.
+            </p>
+            <div className="mt-3 grid grid-cols-[1fr_90px] gap-3">
+              <input
+                type="text"
+                value={homeCity}
+                onChange={(e) => setHomeCity(e.target.value)}
+                placeholder="West Palm Beach"
+                autoComplete="address-level2"
+                className="min-w-0 rounded-2xl border border-white/10 bg-white px-4 py-3 text-black outline-none focus:border-violet-400"
+              />
+              <input
+                type="text"
+                value={homeState}
+                onChange={(e) => setHomeState(e.target.value.toUpperCase().slice(0, 2))}
+                placeholder="FL"
+                autoComplete="address-level1"
+                aria-label="State"
+                maxLength={2}
+                className="min-w-0 rounded-2xl border border-white/10 bg-white px-4 py-3 text-center uppercase text-black outline-none focus:border-violet-400"
+              />
+            </div>
+          </div>
 
           {notice ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white/80">
