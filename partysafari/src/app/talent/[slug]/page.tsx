@@ -255,16 +255,24 @@ export default function TalentProfilePage() {
             <p className="mt-3 text-sm leading-6 text-white/65">
               {performer.bio || "This performer has been added from a verified PartySafari event lineup. Profile details will grow as the artist connects with PartySafari."}
             </p>
-            {instagramUrl ? (
-              <a
-                href={instagramUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 inline-flex min-h-11 items-center rounded-full border border-violet-300/30 bg-violet-500/10 px-4 text-sm font-semibold text-violet-100"
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link
+                href={`/talent/${performer.slug}/book`}
+                className="inline-flex min-h-11 items-center rounded-full bg-gradient-to-r from-violet-600 to-orange-500 px-5 text-sm font-bold text-white shadow-[0_0_28px_rgba(124,58,237,0.2)] transition hover:brightness-110"
               >
-                Instagram
-              </a>
-            ) : null}
+                Request booking
+              </Link>
+              {instagramUrl ? (
+                <a
+                  href={instagramUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center rounded-full border border-violet-300/30 bg-violet-500/10 px-4 text-sm font-semibold text-violet-100"
+                >
+                  Instagram
+                </a>
+              ) : null}
+            </div>
           </div>
 
           <div className="rounded-3xl border border-orange-300/15 bg-orange-500/[0.07] p-5">
