@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     format: "jsonv2",
     addressdetails: "1",
     countrycodes: "us",
-    featureType: "city",
+    featureType: "settlement",
     limit: "5",
   });
 
