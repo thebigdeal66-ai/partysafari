@@ -203,6 +203,7 @@ export default function SafariPage() {
   const [startTime, setStartTime] = useState("21:00");
   const [endTime, setEndTime] = useState("01:00");
   const [maxDistanceMiles, setMaxDistanceMiles] = useState(8);
+  const [maxDistanceInput, setMaxDistanceInput] = useState("8");
   const [budget, setBudget] = useState(120);
   const [selectedGenres, setSelectedGenres] = useState<string[]>(["House", "EDM"]);
   const [selectedVenueTypes, setSelectedVenueTypes] = useState<string[]>(["Club", "Rooftop"]);
@@ -1320,8 +1321,30 @@ export default function SafariPage() {
                       type="number"
                       min={1}
                       max={50}
-                      value={maxDistanceMiles}
-                      onChange={(event) => setMaxDistanceMiles(Math.max(1, Number(event.target.value || 1)))}
+                      value={maxDistanceInput}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setMaxDistanceInput(nextValue);
+
+                        if (nextValue === "") {
+                          return;
+                        }
+
+                        const parsed = Number(nextValue);
+                        if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 50) {
+                          setMaxDistanceMiles(parsed);
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = Number(maxDistanceInput);
+                        const normalized =
+                          maxDistanceInput !== "" && Number.isFinite(parsed)
+                            ? Math.min(50, Math.max(1, parsed))
+                            : maxDistanceMiles;
+
+                        setMaxDistanceMiles(normalized);
+                        setMaxDistanceInput(String(normalized));
+                      }}
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-[#07070B] px-3 py-2.5 text-white outline-none focus:border-violet-400"
                     />
                   </label>
