@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from "react";
 import Link from "next/link";
 import L from "leaflet";
 import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -421,6 +421,10 @@ export default function SafariRadarExperience() {
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [selectedCity, setSelectedCity] = useState<string>("nearby");
+  const [cityQuery, setCityQuery] = useState("");
+  const [searchedCityCenter, setSearchedCityCenter] = useState<GeoPoint | null>(null);
+  const [citySearchError, setCitySearchError] = useState<string | null>(null);
+  const [citySearching, setCitySearching] = useState(false);
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const [focusTarget, setFocusTarget] = useState<FocusTarget>(null);
   const [showFilterSheet, setShowFilterSheet] = useState(false);
@@ -716,6 +720,10 @@ export default function SafariRadarExperience() {
       return null;
     }
 
+    if (searchedCityCenter) {
+      return searchedCityCenter;
+    }
+
     const inCity = venues.filter((venue) => cityLabel(venue) === selectedCity);
     if (inCity.length === 0) {
       return null;
@@ -724,7 +732,58 @@ export default function SafariRadarExperience() {
     const lat = inCity.reduce((sum, venue) => sum + venue.latitude, 0) / inCity.length;
     const lng = inCity.reduce((sum, venue) => sum + venue.longitude, 0) / inCity.length;
     return { lat, lng };
-  }, [selectedCity, venues]);
+  }, [searchedCityCenter, selectedCity, venues]);
+
+  const submitCitySearch = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = cityQuery.trim();
+    if (query.length < 2) {
+      setCitySearchError("Type a city and state, like Salisbury, MD.");
+      return;
+    }
+
+    setCitySearchError(null);
+    const localMatch = cityOptions.find(
+      (option) => option !== "nearby" && option.toLowerCase() === query.toLowerCase()
+    );
+
+    if (localMatch) {
+      setSelectedCity(localMatch);
+      setCityQuery(localMatch);
+      setSearchedCityCenter(null);
+      setSelectedHotspotId(null);
+      return;
+    }
+
+    setCitySearching(true);
+    try {
+      const response = await fetch(`/api/public/cities?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+      const payload = (await response.json()) as Array<{ label: string; lat: number; lng: number }> | { error?: string };
+      if (!response.ok || !Array.isArray(payload)) {
+        throw new Error("City lookup failed.");
+      }
+
+      const match = payload[0];
+      if (!match) {
+        setCitySearchError("We couldn\'t find that city and state. Try a nearby city or check the spelling.");
+        return;
+      }
+
+      const center = { lat: match.lat, lng: match.lng };
+      setSelectedCity(match.label);
+      setCityQuery(match.label);
+      setSearchedCityCenter(center);
+      setSelectedHotspotId(null);
+      setFocusTarget({ ...center, zoom: 13 });
+    } catch (error) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[SafariRadar] city search failed", error);
+      }
+      setCitySearchError("City search is temporarily unavailable. Please try again.");
+    } finally {
+      setCitySearching(false);
+    }
+  }, [cityOptions, cityQuery]);
 
   useEffect(() => {
     logEffectRun("sync-map-center", 669, ["cityCenter", "userLocation"]);
@@ -779,7 +838,7 @@ export default function SafariRadarExperience() {
       scoreKeys: Object.keys(partyScores.scoresByVenueId).length,
     });
     const now = Date.now();
-    const from = userLocation || mapCenter;
+    const from = selectedCity === "nearby" ? (userLocation || mapCenter) : mapCenter;
 
     return venues
       .map((venue) => {
@@ -843,7 +902,7 @@ export default function SafariRadarExperience() {
         } as RadarHotspot;
       })
       .sort((left, right) => right.crowdPulse.pulseScore - left.crowdPulse.pulseScore);
-  }, [eventsByVenueId, liveMetrics.metricsByVenueId, mapCenter, partyScores.scoresByVenueId, userLocation, venues]);
+  }, [eventsByVenueId, liveMetrics.metricsByVenueId, mapCenter, partyScores.scoresByVenueId, selectedCity, userLocation, venues]);
 
   const venueTypeOptions = useMemo(() => {
     radarTrace("SafariRadarExperience", "memo:venueTypeOptions", { line: 758, hotspotsLength: hotspots.length });
@@ -996,25 +1055,47 @@ export default function SafariRadarExperience() {
       <section className="relative z-20 mx-auto flex w-full max-w-7xl items-center gap-2 px-4 pb-3 md:px-6">
         <button
           type="button"
-          onClick={requestGeolocation}
+          onClick={() => {
+            setSelectedCity("nearby");
+            setCityQuery("");
+            setSearchedCityCenter(null);
+            setSelectedHotspotId(null);
+            setCitySearchError(null);
+            requestGeolocation();
+          }}
           className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 transition hover:bg-white/20"
         >
           Locate Me
         </button>
 
-        <label className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
-          <span className="mr-2 text-white/65">City</span>
-          <select
-            value={selectedCity}
-            onChange={(event) => setSelectedCity(event.target.value)}
-            className="bg-transparent text-white outline-none"
+        <form onSubmit={submitCitySearch} className="flex min-w-[220px] flex-1 items-center gap-2">
+          <label className="flex min-w-0 flex-1 items-center rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90">
+            <span className="mr-2 shrink-0 text-white/65">City</span>
+            <input
+              type="text"
+              inputMode="text"
+              autoComplete="address-level2"
+              list="radar-city-options"
+              value={cityQuery}
+              onChange={(event) => setCityQuery(event.target.value)}
+              placeholder={selectedCity === "nearby" ? "City, State" : selectedCity}
+              aria-label="Search city and state"
+              className="min-w-0 w-full bg-transparent text-white placeholder:text-white/55 outline-none"
+            />
+            <datalist id="radar-city-options">
+              {cityOptions.filter((option) => option !== "nearby").map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          </label>
+          <button
+            type="submit"
+            disabled={citySearching}
+            className="shrink-0 rounded-full border border-cyan-300/45 bg-cyan-400/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/30 disabled:cursor-wait disabled:opacity-60"
           >
-            <option value="nearby" className="bg-[#0a0b14]">Near Me</option>
-            {cityOptions.filter((option) => option !== "nearby").map((option) => (
-              <option key={option} value={option} className="bg-[#0a0b14]">{option}</option>
-            ))}
-          </select>
-        </label>
+            {citySearching ? "..." : "Go"}
+          </button>
+        </form>
 
         <button
           type="button"
@@ -1398,6 +1479,12 @@ export default function SafariRadarExperience() {
       {venuesError ? (
         <div className="fixed left-4 top-32 z-[900] rounded-2xl border border-rose-300/35 bg-rose-500/15 px-3 py-2 text-xs text-rose-100 backdrop-blur">
           {venuesError}
+        </div>
+      ) : null}
+
+      {citySearchError ? (
+        <div role="status" className="fixed left-4 top-44 z-[900] max-w-[calc(100vw-2rem)] rounded-2xl border border-amber-300/35 bg-[#2b1905]/95 px-3 py-2 text-xs text-amber-100 backdrop-blur">
+          {citySearchError}
         </div>
       ) : null}
 
