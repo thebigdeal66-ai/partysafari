@@ -415,13 +415,25 @@ export default function VenuePage() {
             <h1 className="text-4xl font-bold text-white">{venue.name}</h1>
             {venue.verified ? (
               <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100">
-                Verified
+                Verified Venue ✓
               </span>
-            ) : null}
+            ) : (
+              <span className="rounded-full border border-violet-300/35 bg-violet-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-violet-100">
+                Listed Venue
+              </span>
+            )}
           </div>
           <p className="mt-2 text-white/80">
             {(venue.venue_type || "Venue")} • {[venue.city, venue.state].filter(Boolean).join(", ") || "Location TBA"}
           </p>
+          {!venue.verified ? (
+            <Link
+              href={`/claim/${venue.slug}`}
+              className="mt-3 inline-flex min-h-11 w-fit items-center rounded-full border border-violet-300/40 bg-violet-500/15 px-4 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25"
+            >
+              Own this venue? Claim it
+            </Link>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="rounded-full bg-violet-500/25 px-3 py-1 text-sm text-violet-100">Status: {venue.current_status || "Open"}</span>
             <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${getCrowdLevelColorClass(liveCrowdLevel as any)}`}>
