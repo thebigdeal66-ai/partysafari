@@ -301,8 +301,11 @@ export default function VenuePage() {
 
       const venueData = data as VenueRow;
       setVenue(venueData);
-      await loadEvents(venueData.id);
       setLoading(false);
+
+      // Venue details are public and should not be blocked by a slower or
+      // unavailable secondary events query.
+      void loadEvents(venueData.id);
     }
 
     void initialize();
