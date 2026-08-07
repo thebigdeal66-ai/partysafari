@@ -76,6 +76,7 @@ export default function NavBar() {
   const [messageUnreadTotal, setMessageUnreadTotal] = useState(0);
   const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const userId = auth.userId;
 
@@ -197,6 +198,36 @@ export default function NavBar() {
     };
   }, [supabase, userId]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshAdminAccess = async () => {
+      if (!userId) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("app_admins")
+        .select("profile_id")
+        .eq("profile_id", userId)
+        .maybeSingle();
+
+      if (!isMounted) return;
+
+      if (error && process.env.NODE_ENV === "development") {
+        console.warn("[NavBar] Failed to check admin access:", error);
+      }
+      setIsAdmin(Boolean(data) && !error);
+    };
+
+    void refreshAdminAccess();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [supabase, userId]);
+
   const handleSignIn = () => {
     auth.clearError();
     setMobileMenuOpen(false);
@@ -252,6 +283,14 @@ export default function NavBar() {
                 className="text-white/80 hover:text-violet-300 transition-colors"
               >
                 Bookings
+              </Link>
+            ) : null}
+            {isAdmin ? (
+              <Link
+                href="/admin/performer-claims"
+                className="text-amber-200/90 hover:text-amber-100 transition-colors"
+              >
+                Claim Review
               </Link>
             ) : null}
             <Link
@@ -367,6 +406,15 @@ export default function NavBar() {
               className="rounded-xl px-3 py-2 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-violet-300"
             >
               Bookings
+            </Link>
+          ) : null}
+          {isAdmin ? (
+            <Link
+              href="/admin/performer-claims"
+              onClick={closeMobileMenu}
+              className="rounded-xl px-3 py-2 text-sm text-amber-200 transition-colors hover:bg-amber-500/10 hover:text-amber-100"
+            >
+              Claim Review
             </Link>
           ) : null}
           <Link
