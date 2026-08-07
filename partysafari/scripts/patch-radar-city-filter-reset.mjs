@@ -6,7 +6,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const target = resolve(here, "../src/components/radar/SafariRadarExperience.tsx");
 let source = await readFile(target, "utf8");
 
-const resetBlock = `      setMinScore(0);\n      setMaxDistanceMiles(20);\n      setFriendsOnly(false);\n      setOpenNowOnly(false);\n      setLiveStoriesOnly(false);\n      setLiveMusicOnly(false);\n      setVenueTypeFilter("All");\n      setCrowdFilter("All");\n      setOverlays({\n        friends: false,\n        stories: false,\n        events: false,\n        happyHour: false,\n        liveMusic: false,\n        lateNightFood: false,\n      });\n      setShowFilterSheet(false);`;
+const resetBlock = `      setMinScore(0);\n      setMaxDistanceMiles(20);\n      setFriendsOnly(false);\n      setOpenNowOnly(false);\n      setLiveStoriesOnly(false);\n      setLiveMusicOnly(false);\n      setVenueTypeFilter("All");\n      setCrowdFilter("All");\n      setOverlays({\n        friends: false,\n        stories: false,\n        events: false,\n        happyHour: false,\n        liveMusic: false,\n        lateNightFood: false,\n        crowdPulse: false,\n      });\n      setShowFilterSheet(false);`;
 
 const localAnchor = `      setSelectedCity(localMatch);\n      setCityQuery(localMatch);\n      setSearchedCityCenter(center);\n      setSelectedHotspotId(null);`;
 const localReplacement = `${localAnchor}\n${resetBlock}`;
