@@ -12,6 +12,7 @@ export default function SignupPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [homeCity, setHomeCity] = useState("");
   const [homeState, setHomeState] = useState("");
   const [notice, setNotice] = useState("");
@@ -31,6 +32,28 @@ export default function SignupPage() {
       return;
     }
 
+    const normalizedUsername = username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
+      setNotice("Choose a username with 3–24 lowercase letters, numbers, or underscores.");
+      return;
+    }
+
+    const { data: existingUsername, error: usernameLookupError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("username", normalizedUsername)
+      .maybeSingle();
+
+    if (usernameLookupError) {
+      setNotice("Unable to check that username right now. Please try again.");
+      return;
+    }
+
+    if (existingUsername) {
+      setNotice("That username is already taken. Try another one.");
+      return;
+    }
+
     const normalizedCity = homeCity.trim();
     const normalizedState = homeState.trim().toUpperCase();
     if ((normalizedCity || normalizedState) && (!normalizedCity || !/^[A-Z]{2}$/.test(normalizedState))) {
@@ -46,6 +69,7 @@ export default function SignupPage() {
       options: {
         emailRedirectTo: `${window.location.origin}${nextPath}`,
         data: {
+          username: normalizedUsername,
           home_city: normalizedCity,
           home_state: normalizedState,
         },
@@ -54,7 +78,17 @@ export default function SignupPage() {
     setLoading(false);
 
     if (error) {
-      setNotice(error.message);
+      const { data: conflictingUsername } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("username", normalizedUsername)
+        .maybeSingle();
+
+      setNotice(
+        conflictingUsername
+          ? "That username was just claimed. Try another one."
+          : error.message
+      );
       return;
     }
 
@@ -96,6 +130,29 @@ export default function SignupPage() {
             placeholder="Choose a secure password"
             className="w-full rounded-2xl border border-white/10 bg-white px-4 py-3 text-black outline-none focus:border-violet-400"
           />
+
+          <div>
+            <label className="block text-sm text-white/70" htmlFor="username">
+              Username
+            </label>
+            <div className="mt-2 flex items-center rounded-2xl border border-white/10 bg-white px-4 focus-within:border-violet-400">
+              <span className="text-black/50">@</span>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24))}
+                placeholder="mikesafari"
+                autoComplete="username"
+                minLength={3}
+                maxLength={24}
+                className="min-w-0 flex-1 bg-transparent py-3 pl-1 text-black outline-none"
+              />
+            </div>
+            <p className="mt-2 text-xs text-white/50">
+              3–24 lowercase letters, numbers, or underscores. This will appear as @username.
+            </p>
+          </div>
 
           <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4">
             <p className="text-sm font-semibold text-violet-100">Where do you usually go out?</p>
