@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
+import FounderCrowdPulsePanel from "@/components/venue-owner/FounderCrowdPulsePanel";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { getCrowdLevel, getCrowdLevelColorClass, getCrowdLevelEmoji, getCrowdLevelDescription, formatCheckInCount } from "@/lib/venueCheckInUtils";
 import EventsManager from "@/components/venue-owner/EventsManager";
@@ -29,6 +30,8 @@ type VenueRecord = Record<string, unknown> & {
   verified?: boolean | null;
   current_status?: string | null;
   crowd_level?: string | null;
+  city?: string | null;
+  state?: string | null;
   description?: string | null;
   phone?: string | null;
   website_url?: string | null;
@@ -830,6 +833,8 @@ function VenueOwnerDashboard() {
               <StatCard label="Followers" value={`${followerCountPlaceholder} (placeholder)`} />
               <StatCard label="Upcoming Events" value={String(upcomingEventCount)} />
             </section>
+
+            <FounderCrowdPulsePanel venue={venue} programmedEventTitle={firstString(tonightEvent?.title)} />
 
             <section className="rounded-3xl border border-white/10 bg-[#10061f] p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

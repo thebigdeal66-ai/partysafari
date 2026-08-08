@@ -10,6 +10,12 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src/lib/**/*.ts", "src/components/discover/FounderCalibrationControl.tsx", "src/components/discover/*.test.ts"],
+  "include": [
+    "src/lib/**/*.ts",
+    "src/components/discover/FounderCalibrationControl.tsx",
+    "src/components/discover/*.test.ts",
+    "src/components/venue-owner/FounderCrowdPulsePanel.tsx",
+    "src/components/venue-owner/*.test.ts"
+  ],
   "exclude": ["node_modules"]
 }

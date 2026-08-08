@@ -73,6 +73,12 @@ export type UseCrowdPulseOptions = {
    * "as enabled as the flag allows".
    */
   enabled?: boolean;
+  /**
+   * Founder-only surfaces can opt into the existing Crowd Pulse pipeline even
+   * while the global rollout flag stays dark. The caller still has to gate
+   * access; this only avoids duplicating the query and aggregation path.
+   */
+  bypassFeatureFlag?: boolean;
   /** Off by default. Set only on a surface that is actually rendering the pulse. */
   pollIntervalMs?: number;
   config?: Partial<CrowdPulseConfig>;
@@ -355,7 +361,7 @@ async function loadCrowdPulseRead(
 
 export function useCrowdPulse(options: UseCrowdPulseOptions): UseCrowdPulseResult {
   const supabase = useMemo(() => createSupabaseBrowser(), []);
-  const flagEnabled = isFeatureEnabled("crowdPulse");
+  const flagEnabled = options.bypassFeatureFlag === true ? true : isFeatureEnabled("crowdPulse");
   const enabled = flagEnabled && (options.enabled ?? true) === true;
   const pollIntervalMs = options.pollIntervalMs ?? 0;
 
