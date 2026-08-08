@@ -77,7 +77,6 @@ type Toast = {
   type: ToastType;
 };
 
-const DEFAULT_CENTER: Coordinates = { lat: 30.2672, lng: -97.7431 };
 const AVAILABLE_GENRES = ["EDM", "Hip Hop", "House", "Latin", "Afrobeats", "Top 40", "R&B", "Techno"];
 const AVAILABLE_VENUE_TYPES = ["Club", "Rooftop", "Lounge", "Bar", "Live Music", "Speakeasy"];
 const GENERATION_MESSAGES = [
@@ -259,8 +258,8 @@ export default function SafariPage() {
         setGeolocationError(null);
       },
       () => {
-        setLocation(DEFAULT_CENTER);
-        setGeolocationError("Location permission denied. Using a downtown default start point.");
+        setLocation(null);
+        setGeolocationError("Location is required to build a distance-aware Safari. Enable location access, then refresh.");
       },
       {
         enableHighAccuracy: true,
@@ -603,10 +602,12 @@ export default function SafariPage() {
   }, [eventsTonight]);
 
   const allScoredCandidates = useMemo(() => {
-    const startPoint = location || DEFAULT_CENTER;
+    if (!location) {
+      return [];
+    }
 
     return venues.map((venue) => {
-      const distanceFromStart = getDistanceMiles(startPoint, {
+      const distanceFromStart = getDistanceMiles(location, {
         lat: venue.latitude,
         lng: venue.longitude,
       });
@@ -696,6 +697,12 @@ export default function SafariPage() {
       return;
     }
 
+    if (!location) {
+      setGenerationError("Location is required to build your Safari. Enable location access, then refresh.");
+      setGeneratedStops([]);
+      return;
+    }
+
     setIsGenerating(true);
     setGenerationError(null);
     setGenerationMessageIndex(0);
@@ -732,7 +739,7 @@ export default function SafariPage() {
     }
 
     const toOrder = Array.from(uniqueByVenue.values());
-    const startPoint = location || DEFAULT_CENTER;
+    const startPoint = location;
 
     const ordered: (typeof toOrder)[number][] = [];
     const pending = [...toOrder];
@@ -1152,7 +1159,9 @@ export default function SafariPage() {
     };
   }, [loadVenuesAndEvents, supabase]);
 
-  const startPoint = location || DEFAULT_CENTER;
+  const mapStartPoint = location ?? (generatedStops[0]
+    ? { lat: generatedStops[0].venue.latitude, lng: generatedStops[0].venue.longitude }
+    : null);
 
   const totalEstimatedCover = useMemo(() => {
     return generatedStops.reduce((sum, stop) => sum + (stop.event?.coverCharge ?? stop.venue.coverCharge ?? 0), 0);
@@ -1395,7 +1404,7 @@ export default function SafariPage() {
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-[#0b0717] p-3 text-sm text-white/70">
-                  Starting Location: {location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : "Locating..."}
+                  Starting Location: {location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : geolocationError ? "Location unavailable" : "Locating..."}
                   <button
                     type="button"
                     onClick={requestGeolocation}
@@ -1510,7 +1519,7 @@ export default function SafariPage() {
                 ) : (
                   <button
                     type="button"
-                    disabled={isLoadingData}
+                    disabled={isLoadingData || !location}
                     onClick={generateRoute}
                     className="w-full rounded-full bg-gradient-to-r from-violet-600 to-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-55"
                   >
@@ -1530,7 +1539,7 @@ export default function SafariPage() {
                   <button
                     type="button"
                     onClick={generateRoute}
-                    disabled={isGenerating || isLoadingData}
+                    disabled={isGenerating || isLoadingData || !location}
                     className="rounded-full border border-violet-400/40 bg-violet-500/20 px-3 py-2 text-sm font-semibold text-violet-100"
                   >
                     Regenerate Route
@@ -1789,34 +1798,40 @@ export default function SafariPage() {
             <div className="rounded-3xl border border-white/10 bg-[#10061f] p-4">
               <h3 className="mb-3 text-xl font-semibold text-white">Safari Map</h3>
               <div className="h-[320px] overflow-hidden rounded-2xl border border-white/10 md:h-[420px]">
-                <SafariRouteMap
-                  startPoint={startPoint}
-                  stops={generatedStops.map((stop) => ({
-                    venue: {
-                      latitude: stop.venue.latitude,
-                      longitude: stop.venue.longitude,
-                      name: stop.venue.name,
-                    },
-                  }))}
-                  activeStopIndex={activeStopIndex}
-                  highlightedStopIndex={selectedStopIndex}
-                  isSafariStarted={isSafariStarted}
-                  prefersReducedMotion={prefersReducedMotion}
-                  revealSeed={routeRevealSeed}
-                  onMarkerSelect={(index) => {
-                    setSelectedStopIndex(index);
-                    const stop = generatedStops[index];
-                    if (!stop) {
-                      return;
-                    }
+                {mapStartPoint ? (
+                  <SafariRouteMap
+                    startPoint={mapStartPoint}
+                    stops={generatedStops.map((stop) => ({
+                      venue: {
+                        latitude: stop.venue.latitude,
+                        longitude: stop.venue.longitude,
+                        name: stop.venue.name,
+                      },
+                    }))}
+                    activeStopIndex={activeStopIndex}
+                    highlightedStopIndex={selectedStopIndex}
+                    isSafariStarted={isSafariStarted}
+                    prefersReducedMotion={prefersReducedMotion}
+                    revealSeed={routeRevealSeed}
+                    onMarkerSelect={(index) => {
+                      setSelectedStopIndex(index);
+                      const stop = generatedStops[index];
+                      if (!stop) {
+                        return;
+                      }
 
-                    const key = `${stop.venue.id}-${index}`;
-                    const element = timelineStopRefs.current[key];
-                    if (element) {
-                      element.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }
-                  }}
-                />
+                      const key = `${stop.venue.id}-${index}`;
+                      const element = timelineStopRefs.current[key];
+                      if (element) {
+                        element.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-[#0b0717] px-6 text-center text-sm text-white/65">
+                    Enable location to build and map your Safari.
+                  </div>
+                )}
               </div>
             </div>
 
