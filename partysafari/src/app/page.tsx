@@ -279,8 +279,8 @@ export default function Home() {
           }
         : fallbackVenue;
 
-      const rawStatus = parseText(row.status)?.toLowerCase();
-      if (rawStatus === "cancelled") {
+      const rawStatus = parseText(row.status)?.toLowerCase() || "active";
+      if (!["active", "published", "live", "scheduled"].includes(rawStatus)) {
         return null;
       }
 
