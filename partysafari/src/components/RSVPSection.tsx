@@ -131,7 +131,7 @@ export default function RSVPSection({
     }
 
     if (!user?.id) {
-      router.push('/login');
+      router.push(`/login?next=${encodeURIComponent(`/events/${eventId}`)}`);
       return;
     }
 
