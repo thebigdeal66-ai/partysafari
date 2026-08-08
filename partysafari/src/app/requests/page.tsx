@@ -34,7 +34,6 @@ export default function RequestsPage() {
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [responses, setResponses] = useState<ResponseRow[]>([]);
 
-  const [performerName, setPerformerName] = useState("");
   const [message, setMessage] = useState("");
   const [offerAmount, setOfferAmount] = useState("");
 
@@ -154,8 +153,8 @@ export default function RequestsPage() {
       return;
     }
 
-    if (!performerName.trim() || !message.trim()) {
-      setNotice("Please enter your name and message.");
+    if (!message.trim()) {
+      setNotice("Please enter a message.");
       return;
     }
 
@@ -165,7 +164,6 @@ export default function RequestsPage() {
       .from("request_responses")
       .insert({
         request_id: selectedRequest.id,
-        performer_name: performerName.trim(),
         message: message.trim(),
         offer_amount: offerAmount.trim()
           ? Number(offerAmount)
@@ -183,7 +181,6 @@ export default function RequestsPage() {
       return;
     }
 
-    setPerformerName("");
     setMessage("");
     setOfferAmount("");
 
@@ -400,15 +397,6 @@ export default function RequestsPage() {
                   </p>
                 ) : (
                   <div className="mt-4 space-y-4">
-
-                    <input
-                      placeholder="Your name or performer name"
-                      value={performerName}
-                      onChange={(e) =>
-                        setPerformerName(e.target.value)
-                      }
-                      className="w-full rounded bg-white p-3 text-black"
-                    />
 
                     <input
                       placeholder="Offer amount (optional)"
