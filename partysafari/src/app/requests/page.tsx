@@ -144,6 +144,11 @@ export default function RequestsPage() {
   async function handleSubmitResponse() {
     if (!selectedRequest) return;
 
+    if (isSelectedRequestOwner) {
+      setNotice("You can’t respond to your own request.");
+      return;
+    }
+
     if (selectedRequest.status === "booked") {
       setNotice("This request is already booked.");
       return;
@@ -382,12 +387,16 @@ export default function RequestsPage() {
               <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-6">
 
                 <h3 className="text-xl font-semibold">
-                  Send a Response
+                  {isSelectedRequestOwner ? "Your Request" : "Send a Response"}
                 </h3>
 
                 {selectedRequest.status === "booked" ? (
                   <p className="mt-4 text-green-300">
                     This request is already booked.
+                  </p>
+                ) : isSelectedRequestOwner ? (
+                  <p className="mt-4 text-white/70">
+                    This is your request. Review performer responses below.
                   </p>
                 ) : (
                   <div className="mt-4 space-y-4">
