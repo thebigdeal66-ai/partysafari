@@ -27,6 +27,9 @@ type EventLite = {
   start_time: string;
   cover_charge: number | null;
   featured: boolean;
+  venue_name: string | null;
+  city: string | null;
+  state: string | null;
   venue: VenueLite | null;
   liveCount: number;
 };
@@ -298,6 +301,9 @@ export default function Home() {
         start_time: startsAt,
         cover_charge: parseNumber(row.cover_charge),
         featured,
+        venue_name: parseText(row.venue_name),
+        city: parseText(row.city),
+        state: parseText(row.state),
         venue,
         liveCount: venue?.id ? liveMap.get(venue.id) || 0 : 0,
       } as EventLite;
@@ -382,6 +388,9 @@ export default function Home() {
 
   const renderEventCard = (event: EventLite) => {
     const image = event.venue?.image_url || event.venue?.photo_url;
+    const venueLabel = event.venue?.name || event.venue_name || "Venue TBA";
+    const detailsHref = event.venue?.slug ? `/venues/${event.venue.slug}` : `/events/${event.id}`;
+    const detailsLabel = event.venue?.slug ? "View Venue" : "View Event";
     return (
       <article key={event.id} className="overflow-hidden rounded-3xl border border-white/10 bg-[#10061f]">
         <div className="h-36 bg-[#120824]">
@@ -394,7 +403,7 @@ export default function Home() {
           )}
         </div>
         <div className="space-y-2 p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-violet-300">{event.venue?.name || "Venue"}</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-violet-300">{venueLabel}</p>
           <h3 className="text-xl font-semibold text-white">{event.title}</h3>
           <p className="text-sm text-white/70">{event.performer_name || "Featured lineup"}</p>
           <p className="text-sm text-white/70">{formatDate(event.start_time)}</p>
@@ -402,8 +411,8 @@ export default function Home() {
             <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-white/80">Live: {event.liveCount}</span>
             <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-1 text-violet-100">Cover: {event.cover_charge !== null ? `$${event.cover_charge}` : "TBA"}</span>
           </div>
-          <Link href={event.venue?.slug ? `/venues/${event.venue.slug}` : "/events"} className="inline-flex rounded-full border border-violet-300/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-100">
-            View Venue
+          <Link href={detailsHref} className="inline-flex rounded-full border border-violet-300/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-100">
+            {detailsLabel}
           </Link>
         </div>
       </article>
@@ -429,7 +438,7 @@ export default function Home() {
               <div className="mt-3 space-y-3">
                 {(trendingTonight.length ? trendingTonight : events.slice(0, 3)).map((event) => (
                   <div key={event.id} className="rounded-2xl bg-[#0f0522] p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-violet-300">{event.venue?.name || "Venue"}</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-violet-300">{event.venue?.name || event.venue_name || "Venue TBA"}</p>
                     <p className="mt-1 text-lg font-semibold text-white">{event.title}</p>
                     <p className="text-sm text-white/65">{formatDate(event.start_time)}</p>
                   </div>
