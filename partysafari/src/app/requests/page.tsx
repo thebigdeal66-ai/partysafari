@@ -60,6 +60,11 @@ export default function RequestsPage() {
 
   const isCurrentUserEntertainer = currentProfileType === "entertainer";
 
+  const hasCurrentUserResponded = Boolean(
+    currentUserId &&
+      responses.some((response) => response.responder_id === currentUserId)
+  );
+
   const isAcceptedPerformer = Boolean(
     acceptedResponse?.responder_id &&
       currentUserId &&
@@ -172,8 +177,35 @@ export default function RequestsPage() {
       return;
     }
 
-    if (!message.trim()) {
+    if (hasCurrentUserResponded) {
+      setNotice("You’ve already responded to this request.");
+      return;
+    }
+
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
       setNotice("Please enter a message.");
+      return;
+    }
+
+    if (trimmedMessage.length > 2000) {
+      setNotice("Keep your response to 2,000 characters or fewer.");
+      return;
+    }
+
+    const normalizedOfferAmount = offerAmount.trim();
+    const parsedOfferAmount = normalizedOfferAmount
+      ? Number(normalizedOfferAmount)
+      : null;
+
+    if (
+      parsedOfferAmount !== null &&
+      (!Number.isFinite(parsedOfferAmount) ||
+        parsedOfferAmount < 0.01 ||
+        parsedOfferAmount > 1000000 ||
+        !/^\\d+(?:\\.\\d{1,2})?$/.test(normalizedOfferAmount))
+    ) {
+      setNotice("Enter a valid offer between $0.01 and $1,000,000.00.");
       return;
     }
 
@@ -183,10 +215,8 @@ export default function RequestsPage() {
       .from("request_responses")
       .insert({
         request_id: selectedRequest.id,
-        message: message.trim(),
-        offer_amount: offerAmount.trim()
-          ? Number(offerAmount)
-          : null,
+        message: trimmedMessage,
+        offer_amount: parsedOfferAmount,
         accepted: false,
       });
 
@@ -196,7 +226,13 @@ export default function RequestsPage() {
       if (process.env.NODE_ENV === "development") {
         console.error("[requests] Insert response failed:", error);
       }
-      setNotice("Error sending response.");
+      if (error.code === "23505") {
+        setNotice("You’ve already responded to this request.");
+      } else if (error.code === "23514") {
+        setNotice("Check your response and offer amount, then try again.");
+      } else {
+        setNotice("Error sending response.");
+      }
       return;
     }
 
@@ -432,10 +468,19 @@ export default function RequestsPage() {
                       Update Profile Type
                     </Link>
                   </div>
+                ) : hasCurrentUserResponded ? (
+                  <div className="mt-4 rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-green-200">
+                    Response submitted. The organizer can review your offer below.
+                  </div>
                 ) : (
                   <div className="mt-4 space-y-4">
 
                     <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0.01"
+                      max="1000000"
+                      step="0.01"
                       placeholder="Offer amount (optional)"
                       value={offerAmount}
                       onChange={(e) =>
@@ -447,11 +492,15 @@ export default function RequestsPage() {
                     <textarea
                       placeholder="Your pitch, availability, and details"
                       value={message}
+                      maxLength={2000}
                       onChange={(e) =>
                         setMessage(e.target.value)
                       }
                       className="min-h-[140px] w-full rounded bg-white p-3 text-black"
                     />
+                    <p className="text-right text-xs text-white/50">
+                      {message.length}/2000
+                    </p>
 
                     <button
                       onClick={handleSubmitResponse}
