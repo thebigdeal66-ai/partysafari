@@ -38,6 +38,9 @@ type LiveEvent = {
   featured: boolean;
   status: string;
   created_at: string;
+  venue_name: string | null;
+  city: string | null;
+  state: string | null;
   venue: VenueLite | null;
   distanceMiles: number | null;
   liveCount: number;
@@ -83,7 +86,6 @@ type SupabaseErrorLike = {
   hint?: string;
 };
 
-const DEFAULT_COORDS = { lat: 30.2672, lng: -97.7431 };
 
 function parseText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -278,7 +280,7 @@ export default function EventsPage() {
         setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
       },
       () => {
-        setCoords(DEFAULT_COORDS);
+        setCoords(null);
       },
       {
         enableHighAccuracy: true,
@@ -484,10 +486,9 @@ export default function EventsPage() {
           return null;
         }
 
-        const activeCoords = coords || DEFAULT_COORDS;
         const distanceMiles =
-          venue && venue.latitude !== null && venue.longitude !== null
-            ? getDistanceMiles(activeCoords, { lat: venue.latitude, lng: venue.longitude })
+          coords && venue && venue.latitude !== null && venue.longitude !== null
+            ? getDistanceMiles(coords, { lat: venue.latitude, lng: venue.longitude })
             : null;
 
         return {
@@ -507,6 +508,9 @@ export default function EventsPage() {
           featured: Boolean(row.featured ?? row.is_featured),
           status,
           created_at: parseText(row.created_at) || new Date().toISOString(),
+          venue_name: parseText(row.venue_name),
+          city: parseText(row.city),
+          state: parseText(row.state),
           venue,
           distanceMiles,
           liveCount: venueId ? liveMap.get(venueId) || 0 : 0,
@@ -574,7 +578,7 @@ export default function EventsPage() {
   }, [currentUserId, loadEvents, pushToast, supabase]);
 
   const shareEvent = useCallback(async (event: LiveEvent) => {
-    const title = `${event.title} at ${event.venue?.name || "PartySafari Venue"}`;
+    const title = `${event.title} at ${event.venue?.name || event.venue_name || "PartySafari Venue"}`;
     const text = `${title}\n${formatDateLabel(event.start_time)}\nBuilt with PartySafari`;
 
     if (navigator.share) {
@@ -678,7 +682,9 @@ export default function EventsPage() {
         event.description || "",
         event.performer_name || "",
         event.event_type || "",
-        event.venue?.name || "",
+        event.venue?.name || event.venue_name || "",
+        event.city || "",
+        event.state || "",
         (event.venue?.music_genres || []).join(" "),
       ]
         .join(" ")
@@ -824,7 +830,7 @@ export default function EventsPage() {
                           )}
                         </div>
                         <div className="space-y-2 p-4">
-                          <p className="text-xs uppercase tracking-[0.2em] text-violet-300">{event.venue?.name || "Venue"}</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-violet-300">{event.venue?.name || event.venue_name || "Venue TBA"}</p>
                           <h3 className="text-xl font-semibold text-white">{event.title}</h3>
                           <p className="text-sm text-white/70">{event.performer_name || "Featured performers"}</p>
                           <p className="text-sm text-white/70">{formatDateLabel(event.start_time)}</p>
@@ -837,8 +843,8 @@ export default function EventsPage() {
                           <p className="text-sm text-white/65">Genres: {(event.venue?.music_genres || []).join(", ") || "Open format"}</p>
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <Link href={event.venue?.slug ? `/venues/${event.venue.slug}` : "/map"} className="rounded-full border border-violet-400/40 bg-violet-500/15 px-3 py-1.5 text-xs font-semibold text-violet-100">
-                              View Venue
+                            <Link href={event.venue?.slug ? `/venues/${event.venue.slug}` : `/events/${event.id}`} className="rounded-full border border-violet-400/40 bg-violet-500/15 px-3 py-1.5 text-xs font-semibold text-violet-100">
+                              {event.venue?.slug ? "View Venue" : "View Event"}
                             </Link>
                             {directionsUrl ? (
                               <a href={directionsUrl} target="_blank" rel="noreferrer" className="rounded-full border border-orange-300/40 bg-orange-500/15 px-3 py-1.5 text-xs font-semibold text-orange-100">
