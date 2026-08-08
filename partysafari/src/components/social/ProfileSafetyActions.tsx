@@ -97,7 +97,7 @@ export default function ProfileSafetyActions({ targetUserId }: { targetUserId: s
   if (!currentUserId || currentUserId === targetUserId) return null;
 
   return (
-    <div className="w-full sm:w-auto">
+    <div className="w-full min-w-0 sm:w-auto">
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -117,7 +117,7 @@ export default function ProfileSafetyActions({ targetUserId }: { targetUserId: s
       </div>
 
       {reportOpen ? (
-        <form onSubmit={handleReport} className="mt-3 w-full min-w-[260px] space-y-3 rounded-2xl border border-white/10 bg-black/40 p-4 sm:w-80">
+        <form onSubmit={handleReport} className="mt-3 w-full min-w-0 max-w-full space-y-3 rounded-2xl border border-white/10 bg-black/40 p-4 sm:w-80">
           <label className="block text-xs font-semibold text-white/70">
             Reason
             <select
