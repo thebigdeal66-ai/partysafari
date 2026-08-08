@@ -1,3 +1,4 @@
+import Link from "next/link";
 import ProfileCard from "../../components/ProfileCard";
 
 const profiles = [
@@ -66,30 +67,38 @@ const profiles = [
 export default function ProfilesPage() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#07070B] text-white">
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-3xl font-bold text-white sm:text-4xl">Discover Profiles</h1>
-          <p className="mt-2 text-base leading-relaxed text-white/70 sm:text-xl">
-            Connect with users, businesses, and entertainers in the PartySafari community
-          </p>
+      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="break-words text-4xl font-bold text-white">Discover Profiles</h1>
+            <p className="mt-2 max-w-3xl text-xl text-white/70">
+              Connect with users, businesses, and entertainers in the PartySafari community
+            </p>
+          </div>
+          <Link
+            href="/profile/edit"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-violet-400/40 bg-violet-500/15 px-5 py-3 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80"
+          >
+            Edit My Profile
+          </Link>
         </div>
 
-        <div className="mb-6 flex max-w-full flex-wrap gap-2 sm:mb-8 sm:gap-4">
-          <button className="min-h-11 rounded-full bg-violet-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 sm:px-6">
+        <div className="mb-8 flex flex-wrap gap-3 sm:gap-4">
+          <button className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">
             All Profiles
           </button>
-          <button className="min-h-11 rounded-full border border-violet-500/50 bg-violet-500/10 px-5 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20 sm:px-6">
+          <button className="rounded-full border border-violet-500/50 bg-violet-500/10 px-6 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20">
             Users
           </button>
-          <button className="min-h-11 rounded-full border border-violet-500/50 bg-violet-500/10 px-5 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20 sm:px-6">
+          <button className="rounded-full border border-violet-500/50 bg-violet-500/10 px-6 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20">
             Businesses
           </button>
-          <button className="min-h-11 rounded-full border border-violet-500/50 bg-violet-500/10 px-5 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20 sm:px-6">
+          <button className="rounded-full border border-violet-500/50 bg-violet-500/10 px-6 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20">
             Entertainers
           </button>
         </div>
 
-        <div className="grid min-w-0 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {profiles.map((profile) => (
             <ProfileCard key={profile.id} profile={profile} />
           ))}
