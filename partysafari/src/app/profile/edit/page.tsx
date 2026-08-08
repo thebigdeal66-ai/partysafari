@@ -215,8 +215,34 @@ function EditProfileForm() {
     }
 
     const userId = session.user.id;
+    const normalizedUsername = username.trim().toLowerCase();
     const normalizedCity = homeCity.trim();
     const normalizedState = homeState.trim().toUpperCase();
+
+    if (!/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
+      setNotice("Choose a username with 3–24 lowercase letters, numbers, or underscores.");
+      setSaving(false);
+      return;
+    }
+
+    const { data: existingUsername, error: usernameLookupError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("username", normalizedUsername)
+      .neq("id", userId)
+      .maybeSingle();
+
+    if (usernameLookupError) {
+      setNotice("Unable to check that username right now. Please try again.");
+      setSaving(false);
+      return;
+    }
+
+    if (existingUsername) {
+      setNotice("That username is already taken. Try another one.");
+      setSaving(false);
+      return;
+    }
 
     if ((normalizedCity || normalizedState) && (!normalizedCity || !/^[A-Z]{2}$/.test(normalizedState))) {
       setNotice("Enter both your home city and a two-letter state code, or leave both blank.");
@@ -230,7 +256,7 @@ function EditProfileForm() {
         {
           id: userId,
           full_name: fullName,
-          username: username.trim(),
+          username: normalizedUsername,
           bio,
           location,
           profile_type: profileType,
@@ -242,7 +268,11 @@ function EditProfileForm() {
       );
 
     if (error) {
-      setNotice(error.message || "Failed to save profile.");
+      setNotice(
+        error.code === "23505"
+          ? "That username was just claimed. Try another one."
+          : error.message || "Failed to save profile."
+      );
       setSaving(false);
       return;
     }
@@ -341,13 +371,22 @@ function EditProfileForm() {
 
                 <label className="space-y-2 text-sm text-white/70">
                   Username
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full rounded-3xl border border-white/10 bg-[#07070B] px-4 py-3 text-white outline-none focus:border-violet-400"
-                    placeholder="@alexr"
-                  />
+                  <div className="flex items-center rounded-3xl border border-white/10 bg-[#07070B] px-4 focus-within:border-violet-400">
+                    <span className="text-white/40">@</span>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24))}
+                      autoComplete="username"
+                      minLength={3}
+                      maxLength={24}
+                      className="min-w-0 flex-1 bg-transparent py-3 pl-1 text-white outline-none"
+                      placeholder="alexr"
+                    />
+                  </div>
+                  <span className="block text-xs text-white/45">
+                    3–24 lowercase letters, numbers, or underscores.
+                  </span>
                 </label>
               </div>
 
