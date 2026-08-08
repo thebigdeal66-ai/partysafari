@@ -13,6 +13,7 @@ type RequestRow = {
   notes: string | null;
   created_at: string | null;
   status: string | null;
+  created_by: string | null;
 };
 
 type ResponseRow = {
@@ -40,6 +41,7 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const selectedRequest = useMemo(
     () =>
@@ -51,6 +53,23 @@ export default function RequestsPage() {
     () => responses.find((response) => response.accepted),
     [responses]
   );
+
+  const isSelectedRequestOwner = Boolean(
+    selectedRequest && currentUserId && selectedRequest.created_by === currentUserId
+  );
+
+  const isAcceptedPerformer = Boolean(
+    acceptedResponse?.responder_id &&
+      currentUserId &&
+      acceptedResponse.responder_id === currentUserId
+  );
+
+  const bookingChatTargetId =
+    isSelectedRequestOwner && acceptedResponse?.responder_id !== currentUserId
+      ? acceptedResponse?.responder_id || null
+      : isAcceptedPerformer && selectedRequest?.created_by !== currentUserId
+        ? selectedRequest?.created_by || null
+        : null;
 
   useEffect(() => {
     loadRequests();
@@ -65,6 +84,11 @@ export default function RequestsPage() {
   }, [selectedRequestId]);
 
   async function loadRequests() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    setCurrentUserId(user?.id || null);
+
     const { data, error } = await supabase
       .from("requests")
       .select("*")
@@ -343,9 +367,9 @@ export default function RequestsPage() {
                   )}
 
                 {selectedRequest.status === "booked" &&
-                  acceptedResponse?.responder_id && (
+                  bookingChatTargetId && (
                     <div className="mt-4">
-                      <Link href={`/messages?start=${acceptedResponse.responder_id}`}>
+                      <Link href={`/messages?start=${bookingChatTargetId}`}>
                         <button className="rounded bg-violet-600 px-4 py-2 text-sm font-medium">
                           Open Booking Chat
                         </button>
@@ -465,7 +489,8 @@ export default function RequestsPage() {
                           </p>
                         )}
 
-                        {!response.accepted &&
+                        {isSelectedRequestOwner &&
+                          !response.accepted &&
                           !acceptedResponse &&
                           selectedRequest.status !== "booked" && (
                             <button
