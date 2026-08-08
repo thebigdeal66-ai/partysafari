@@ -17,6 +17,11 @@ export default function AuthGuard({
     const supabase = createSupabaseBrowser();
     let cancelled = false;
 
+    const redirectToLogin = () => {
+      const currentPath = `${window.location.pathname}${window.location.search}`;
+      router.replace(`/login?next=${encodeURIComponent(currentPath)}`);
+    };
+
     const validateSession = async () => {
       try {
         const sessionResult = await Promise.race([
@@ -31,21 +36,21 @@ export default function AuthGuard({
         }
 
         if (sessionResult === null) {
-          router.replace("/login");
+          redirectToLogin();
           return;
         }
 
         const { data } = sessionResult;
 
         if (!data.session) {
-          router.replace("/login");
+          redirectToLogin();
           return;
         }
 
         setAuthorized(true);
       } catch {
         if (!cancelled) {
-          router.replace("/login");
+          redirectToLogin();
         }
       } finally {
         if (!cancelled) {
