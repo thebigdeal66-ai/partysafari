@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS event_rsvps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  status TEXT NOT NULL CHECK (status IN ('going', 'interested')),
+  status TEXT NOT NULL CHECK (status IN ('going', 'interested', 'not_going')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (event_id, user_id)
 );
