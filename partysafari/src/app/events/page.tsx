@@ -560,7 +560,7 @@ export default function EventsPage() {
 
   const onRsvp = useCallback(async (eventId: string, status: EventStatus) => {
     if (!currentUserId) {
-      pushToast("Log in to RSVP.", "info");
+      window.location.href = `/login?next=${encodeURIComponent(`/events/${eventId}`)}`;
       return;
     }
 
