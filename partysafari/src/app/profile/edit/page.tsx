@@ -72,10 +72,14 @@ function EditProfileForm() {
       // available metadata from the auth session (e.g. display name).
       if (!data) {
         const displayName = session?.user?.user_metadata?.full_name || "";
+        const metadataUsername = String(session?.user?.user_metadata?.username || "").trim().toLowerCase();
+        const defaultUsername = /^[a-z0-9_]{3,24}$/.test(metadataUsername)
+          ? metadataUsername
+          : `user_${userId.replace(/-/g, "").slice(0, 16)}`;
         const { error: insertError } = await supabase.from("profiles").insert({
           id: userId,
           full_name: displayName,
-          username: "",
+          username: defaultUsername,
           bio: "",
           location: "",
           home_city: null,
@@ -92,7 +96,7 @@ function EditProfileForm() {
         }
 
         setFullName(displayName);
-        setUsername("");
+        setUsername(defaultUsername);
         setBio("");
         setLocation("");
         setHomeCity("");
