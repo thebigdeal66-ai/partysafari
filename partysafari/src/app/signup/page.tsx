@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { resolveSafeNextPath } from "@/lib/authRedirect";
 
@@ -16,6 +16,12 @@ export default function SignupPage() {
   const [homeState, setHomeState] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+
+  function handleLoginNavigation(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const nextPath = resolveSafeNextPath(window.location.search);
+    router.push(`/login?next=${encodeURIComponent(nextPath)}`);
+  }
 
   async function handleSignup() {
     setNotice("");
@@ -101,7 +107,7 @@ export default function SignupPage() {
                 type="text"
                 value={homeCity}
                 onChange={(e) => setHomeCity(e.target.value)}
-                placeholder="West Palm Beach"
+                placeholder="Ocean City"
                 autoComplete="address-level2"
                 className="min-w-0 rounded-2xl border border-white/10 bg-white px-4 py-3 text-black outline-none focus:border-violet-400"
               />
@@ -109,7 +115,7 @@ export default function SignupPage() {
                 type="text"
                 value={homeState}
                 onChange={(e) => setHomeState(e.target.value.toUpperCase().slice(0, 2))}
-                placeholder="FL"
+                placeholder="MD"
                 autoComplete="address-level1"
                 aria-label="State"
                 maxLength={2}
@@ -134,7 +140,11 @@ export default function SignupPage() {
 
           <p className="text-center text-sm text-white/60">
             Already have an account?{" "}
-            <Link href="/login" className="text-violet-300 hover:text-violet-100">
+            <Link
+              href="/login"
+              onClick={handleLoginNavigation}
+              className="text-violet-300 hover:text-violet-100"
+            >
               Log in
             </Link>
           </p>
