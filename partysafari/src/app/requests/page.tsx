@@ -23,6 +23,7 @@ type ResponseRow = {
   offer_amount: number | null;
   created_at: string | null;
   accepted: boolean | null;
+  responder_id: string | null;
 };
 
 export default function RequestsPage() {
@@ -341,15 +342,16 @@ export default function RequestsPage() {
                     </div>
                   )}
 
-                {selectedRequest.status === "booked" && acceptedResponse && (
-                  <div className="mt-4">
-                    <Link href="/messages">
-                      <button className="rounded bg-violet-600 px-4 py-2 text-sm font-medium">
-                        Open Booking Chat
-                      </button>
-                    </Link>
-                  </div>
-                )}
+                {selectedRequest.status === "booked" &&
+                  acceptedResponse?.responder_id && (
+                    <div className="mt-4">
+                      <Link href={`/messages?start=${acceptedResponse.responder_id}`}>
+                        <button className="rounded bg-violet-600 px-4 py-2 text-sm font-medium">
+                          Open Booking Chat
+                        </button>
+                      </Link>
+                    </div>
+                  )}
 
               </div>
 
