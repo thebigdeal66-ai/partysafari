@@ -168,44 +168,15 @@ export default function RequestsPage() {
     setNotice("");
     setAcceptingId(responseId);
 
-    const { error: clearError } = await supabase
-      .from("request_responses")
-      .update({ accepted: false })
-      .eq("request_id", selectedRequest.id);
-
-    if (clearError) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("[requests] Clear accepted offers failed:", clearError);
-      }
-      setNotice("Could not clear accepted offers.");
-      setAcceptingId(null);
-      return;
-    }
-
-    const { error: acceptError } = await supabase
-      .from("request_responses")
-      .update({ accepted: true })
-      .eq("id", responseId);
+    const { error: acceptError } = await supabase.rpc("accept_offer", {
+      p_response_id: responseId,
+    });
 
     if (acceptError) {
       if (process.env.NODE_ENV === "development") {
         console.error("[requests] Accept offer failed:", acceptError);
       }
       setNotice("Could not accept offer.");
-      setAcceptingId(null);
-      return;
-    }
-
-    const { error: requestError } = await supabase
-      .from("requests")
-      .update({ status: "booked" })
-      .eq("id", selectedRequest.id);
-
-    if (requestError) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("[requests] Update request status failed:", requestError);
-      }
-      setNotice("Offer accepted but request update failed.");
       setAcceptingId(null);
       return;
     }
