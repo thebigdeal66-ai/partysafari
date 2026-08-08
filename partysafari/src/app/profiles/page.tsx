@@ -65,31 +65,31 @@ const profiles = [
 
 export default function ProfilesPage() {
   return (
-    <main className="min-h-screen bg-[#07070B] text-white">
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white">Discover Profiles</h1>
-          <p className="mt-2 text-xl text-white/70">
+    <main className="min-h-screen overflow-x-hidden bg-[#07070B] text-white">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-3xl font-bold text-white sm:text-4xl">Discover Profiles</h1>
+          <p className="mt-2 text-base leading-relaxed text-white/70 sm:text-xl">
             Connect with users, businesses, and entertainers in the PartySafari community
           </p>
         </div>
 
-        <div className="mb-8 flex gap-4">
-          <button className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">
+        <div className="mb-6 flex max-w-full flex-wrap gap-2 sm:mb-8 sm:gap-4">
+          <button className="min-h-11 rounded-full bg-violet-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 sm:px-6">
             All Profiles
           </button>
-          <button className="rounded-full border border-violet-500/50 bg-violet-500/10 px-6 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20">
+          <button className="min-h-11 rounded-full border border-violet-500/50 bg-violet-500/10 px-5 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20 sm:px-6">
             Users
           </button>
-          <button className="rounded-full border border-violet-500/50 bg-violet-500/10 px-6 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20">
+          <button className="min-h-11 rounded-full border border-violet-500/50 bg-violet-500/10 px-5 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20 sm:px-6">
             Businesses
           </button>
-          <button className="rounded-full border border-violet-500/50 bg-violet-500/10 px-6 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20">
+          <button className="min-h-11 rounded-full border border-violet-500/50 bg-violet-500/10 px-5 py-2 text-sm font-semibold text-violet-200 transition hover:border-violet-300 hover:bg-violet-500/20 sm:px-6">
             Entertainers
           </button>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
           {profiles.map((profile) => (
             <ProfileCard key={profile.id} profile={profile} />
           ))}
