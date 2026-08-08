@@ -104,7 +104,7 @@ export default function ProfilePage() {
   const [viewerAuthorId, setViewerAuthorId] = useState<string | null>(null);
 
   const rawId = (params?.id as string | undefined) ?? "";
-  const lookup = rawId.startsWith("@") ? rawId.slice(1) : rawId;
+  const lookup = (rawId.startsWith("@") ? rawId.slice(1) : rawId).toLowerCase();
   const storyState = useStories({
     enabled: Boolean(profile?.id),
     authorId: profile?.id || undefined,
