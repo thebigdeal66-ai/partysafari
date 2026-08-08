@@ -86,7 +86,6 @@ type SupabaseErrorLike = {
   hint?: string;
 };
 
-const DEFAULT_COORDS = { lat: 30.2672, lng: -97.7431 };
 
 function parseText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -281,7 +280,7 @@ export default function EventsPage() {
         setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
       },
       () => {
-        setCoords(DEFAULT_COORDS);
+        setCoords(null);
       },
       {
         enableHighAccuracy: true,
@@ -487,10 +486,9 @@ export default function EventsPage() {
           return null;
         }
 
-        const activeCoords = coords || DEFAULT_COORDS;
         const distanceMiles =
-          venue && venue.latitude !== null && venue.longitude !== null
-            ? getDistanceMiles(activeCoords, { lat: venue.latitude, lng: venue.longitude })
+          coords && venue && venue.latitude !== null && venue.longitude !== null
+            ? getDistanceMiles(coords, { lat: venue.latitude, lng: venue.longitude })
             : null;
 
         return {
