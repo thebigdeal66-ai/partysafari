@@ -234,6 +234,8 @@ function EditProfileForm() {
           bio,
           location,
           profile_type: profileType,
+          home_city: normalizedCity || null,
+          home_state: normalizedState || null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" }
@@ -369,7 +371,7 @@ function EditProfileForm() {
                     type="text"
                     value={homeCity}
                     onChange={(e) => setHomeCity(e.target.value)}
-                    placeholder="West Palm Beach"
+                    placeholder="Ocean City"
                     autoComplete="address-level2"
                     aria-label="Home city"
                     className="min-w-0 rounded-3xl border border-white/10 bg-[#07070B] px-4 py-3 text-white outline-none focus:border-violet-400"
@@ -378,7 +380,7 @@ function EditProfileForm() {
                     type="text"
                     value={homeState}
                     onChange={(e) => setHomeState(e.target.value.toUpperCase().slice(0, 2))}
-                    placeholder="FL"
+                    placeholder="MD"
                     autoComplete="address-level1"
                     aria-label="State"
                     maxLength={2}
