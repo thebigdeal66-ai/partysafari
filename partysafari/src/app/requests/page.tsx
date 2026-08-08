@@ -64,11 +64,12 @@ export default function RequestsPage() {
       acceptedResponse.responder_id === currentUserId
   );
 
-  const bookingChatTargetId = isSelectedRequestOwner
-    ? acceptedResponse?.responder_id || null
-    : isAcceptedPerformer
-      ? selectedRequest?.created_by || null
-      : null;
+  const bookingChatTargetId =
+    isSelectedRequestOwner && acceptedResponse?.responder_id !== currentUserId
+      ? acceptedResponse?.responder_id || null
+      : isAcceptedPerformer && selectedRequest?.created_by !== currentUserId
+        ? selectedRequest?.created_by || null
+        : null;
 
   useEffect(() => {
     loadRequests();
