@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 import { createSupabaseBrowser } from "@/lib/supabaseClient";
 import { resolveSafeNextPath } from "@/lib/authRedirect";
 
@@ -14,6 +14,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+
+  function handleSignupNavigation(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const nextPath = resolveSafeNextPath(window.location.search);
+    router.push(`/signup?next=${encodeURIComponent(nextPath)}`);
+  }
 
   async function handleLogin() {
     setNotice("");
@@ -89,7 +95,11 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-white/60">
             New to PartySafari?{" "}
-            <Link href="/signup" className="text-violet-300 hover:text-violet-100">
+            <Link
+              href="/signup"
+              onClick={handleSignupNavigation}
+              className="text-violet-300 hover:text-violet-100"
+            >
               Create an account
             </Link>
           </p>
