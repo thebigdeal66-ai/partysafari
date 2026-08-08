@@ -91,7 +91,7 @@ export default function EventRsvpControls({
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user?.id) {
-      router.push('/login');
+      router.push(`/login?next=${encodeURIComponent(`/events/${eventId}`)}`);
       return;
     }
 
