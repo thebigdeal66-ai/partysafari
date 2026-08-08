@@ -295,9 +295,12 @@ export default function ProfilePage() {
               }}
             />
             <FriendButton targetUserId={profile.id} />
-            <button className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">
+            <a
+              href={`/messages?start=${encodeURIComponent(profile.id)}`}
+              className="rounded-full bg-violet-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-violet-500"
+            >
               Message
-            </button>
+            </a>
             <ProfileSafetyActions targetUserId={profile.id} />
           </div>
         </div>
