@@ -76,6 +76,7 @@ function MessagesPageContent() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const latestMessageRequestRef = useRef<string | null>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
+  const startRequestHandledRef = useRef(false);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) || null,
@@ -474,6 +475,14 @@ function MessagesPageContent() {
 
       setCurrentUserId(session.user.id);
       setLoading(false);
+
+      const startProfileId = new URLSearchParams(window.location.search).get("start");
+      if (startProfileId && !startRequestHandledRef.current) {
+        startRequestHandledRef.current = true;
+        await handleStartConversation(startProfileId);
+        return;
+      }
+
       await refreshConversations();
     }
 
@@ -482,7 +491,7 @@ function MessagesPageContent() {
     return () => {
       ignored = true;
     };
-  }, [refreshConversations]);
+  }, [handleStartConversation, refreshConversations]);
 
   useEffect(() => {
     scrollToLatestMessage();
