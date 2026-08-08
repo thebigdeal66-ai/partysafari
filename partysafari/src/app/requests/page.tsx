@@ -41,6 +41,7 @@ export default function RequestsPage() {
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentProfileType, setCurrentProfileType] = useState<string | null>(null);
 
   const selectedRequest = useMemo(
     () =>
@@ -56,6 +57,8 @@ export default function RequestsPage() {
   const isSelectedRequestOwner = Boolean(
     selectedRequest && currentUserId && selectedRequest.created_by === currentUserId
   );
+
+  const isCurrentUserEntertainer = currentProfileType === "entertainer";
 
   const isAcceptedPerformer = Boolean(
     acceptedResponse?.responder_id &&
@@ -87,6 +90,17 @@ export default function RequestsPage() {
       data: { user },
     } = await supabase.auth.getUser();
     setCurrentUserId(user?.id || null);
+
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("profile_type")
+        .eq("id", user.id)
+        .maybeSingle();
+      setCurrentProfileType(profile?.profile_type || null);
+    } else {
+      setCurrentProfileType(null);
+    }
 
     const { data, error } = await supabase
       .from("requests")
@@ -145,6 +159,11 @@ export default function RequestsPage() {
 
     if (isSelectedRequestOwner) {
       setNotice("You can’t respond to your own request.");
+      return;
+    }
+
+    if (!isCurrentUserEntertainer) {
+      setNotice("Only Entertainer accounts can respond to talent requests.");
       return;
     }
 
@@ -283,7 +302,7 @@ export default function RequestsPage() {
                   )}
 
                   <div className="mt-4 inline-block rounded bg-violet-600 px-4 py-2 text-sm font-medium">
-                    View & Respond
+                    {isCurrentUserEntertainer ? "View & Respond" : "View Request"}
                   </div>
 
                 </button>
@@ -384,7 +403,11 @@ export default function RequestsPage() {
               <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-6">
 
                 <h3 className="text-xl font-semibold">
-                  {isSelectedRequestOwner ? "Your Request" : "Send a Response"}
+                  {isSelectedRequestOwner
+                    ? "Your Request"
+                    : isCurrentUserEntertainer
+                      ? "Send a Response"
+                      : "Entertainer Account Required"}
                 </h3>
 
                 {selectedRequest.status === "booked" ? (
@@ -395,6 +418,20 @@ export default function RequestsPage() {
                   <p className="mt-4 text-white/70">
                     This is your request. Review performer responses below.
                   </p>
+                ) : !currentUserId ? (
+                  <div className="mt-4 space-y-3 text-white/70">
+                    <p>Sign in with an Entertainer account to respond to this request.</p>
+                    <Link href="/login" className="inline-flex rounded bg-violet-600 px-4 py-2 text-sm font-medium text-white">
+                      Sign In
+                    </Link>
+                  </div>
+                ) : !isCurrentUserEntertainer ? (
+                  <div className="mt-4 space-y-3 text-white/70">
+                    <p>Only Entertainer accounts can submit talent offers.</p>
+                    <Link href="/profile/edit" className="inline-flex rounded bg-violet-600 px-4 py-2 text-sm font-medium text-white">
+                      Update Profile Type
+                    </Link>
+                  </div>
                 ) : (
                   <div className="mt-4 space-y-4">
 
